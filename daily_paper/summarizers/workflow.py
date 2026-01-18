@@ -1,17 +1,13 @@
 """
 Multi-step paper summarization workflow using LLM.
 
-This module implements an orchestratable workflow for summarizing research
-papers. Each step extracts specific information using dedicated prompts.
+This module implements a 3-step workflow for summarizing research papers.
+Each step extracts specific information using dedicated prompts.
 
-The workflow consists of multiple steps:
-1. Basic Info - authors, affiliations, domain
-2. Background - research context and motivation
-3. Core Contributions - main innovations
-4. Problem Statement - what problem is being solved
-5. Technical Methods - algorithms and techniques
-6. Experimental Results - key data points
-7. Conclusions - findings and implications
+The workflow consists of 3 steps:
+1. Content Summary - Comprehensive content summary (600-800 words)
+2. Deep Research - Deep analysis using 5-why method (800-1000 words)
+3. TLDR - One-paragraph summary (100-150 words)
 """
 
 from __future__ import annotations
@@ -37,35 +33,23 @@ class SummaryStep(Enum):
     Each step represents a specific type of information to extract
     from a research paper.
 
-    Values:
-        BASIC_INFO: Author information, affiliations, research domain
-        BACKGROUND: Research background and motivation
-        CONTRIBUTIONS: Core innovations and contributions
-        PROBLEM: Problem being addressed
-        METHODS: Technical methods and algorithms
-        RESULTS: Experimental results and data
-        CONCLUSIONS: Conclusions and implications
+    3-Step Workflow:
+        CONTENT_SUMMARY: Comprehensive content summary (600-800 words)
+        DEEP_RESEARCH: Deep analysis using 5-why method (800-1000 words)
+        TLDR: One-paragraph summary (100-150 words)
     """
 
-    BASIC_INFO = "basic_info"
-    BACKGROUND = "background"
-    CONTRIBUTIONS = "contributions"
-    PROBLEM = "problem"
-    METHODS = "methods"
-    RESULTS = "results"
-    CONCLUSIONS = "conclusions"
+    CONTENT_SUMMARY = "content_summary"
+    DEEP_RESEARCH = "deep_research"
+    TLDR = "tldr"
 
     @property
     def display_name(self) -> str:
         """Human-readable display name for the step."""
         names = {
-            self.BASIC_INFO: "基本信息",
-            self.BACKGROUND: "研究背景",
-            self.CONTRIBUTIONS: "核心贡献",
-            self.PROBLEM: "问题陈述",
-            self.METHODS: "技术方法",
-            self.RESULTS: "实验结果",
-            self.CONCLUSIONS: "结论与启示",
+            self.CONTENT_SUMMARY: "内容摘要",
+            self.DEEP_RESEARCH: "深度研究",
+            self.TLDR: "TLDR总结",
         }
         return names.get(self, self.value)
 
@@ -73,388 +57,210 @@ class SummaryStep(Enum):
     def prompt(self) -> str:
         """Get the system prompt for this summarization step."""
         prompts = {
-            self.BASIC_INFO: self._basic_info_prompt(),
-            self.BACKGROUND: self._background_prompt(),
-            self.CONTRIBUTIONS: self._contributions_prompt(),
-            self.PROBLEM: self._problem_prompt(),
-            self.METHODS: self._methods_prompt(),
-            self.RESULTS: self._results_prompt(),
-            self.CONCLUSIONS: self._conclusions_prompt(),
+            self.CONTENT_SUMMARY: self._content_summary_prompt(),
+            self.DEEP_RESEARCH: self._deep_research_prompt(),
+            self.TLDR: self._tldr_prompt(),
         }
         return prompts.get(self, "")
 
     @staticmethod
-    def _basic_info_prompt() -> str:
-        return """你是一位专业的科研论文分析师。请从论文中提取以下基本信息，并使用中文输出：
+    def _content_summary_prompt() -> str:
+        return """你是一位专业的科研论文分析师。请对论文进行全面的综合分析，并使用中文输出：
 
 ## 分析要求
 
-请提取并整理以下信息，使用专业、精简的中文表述：
+请将原有的"研究背景、核心贡献、问题陈述、技术方法、实验结果、结论与启示"整合成一个有机的整体，系统性地呈现论文的核心内容。
 
-### 1. 作者与机构
-- 第一作者及其他核心作者姓名
-- 作者所属机构/大学
-- 通讯作者（如有标注）
+### 1. 研究背景
+- 该研究属于哪个领域？当前领域的发展趋势和挑战是什么？
+- 为什么需要这项研究？要解决的核心问题是什么？
+- 现有研究的局限性和本文要填补的知识缺口
 
-### 2. 研究领域
-- 一级学科（如：计算机科学、物理学、数学）
-- 二级领域（如：计算机视觉、自然语言处理、深度学习）
-- 研究方向关键词（3-5个）
+### 2. 核心贡献
+- 提出了什么新方法/新模型/新理论？与现有方法的本质区别是什么？
+- 理论贡献：在理论层面的突破、新框架或新范式
+- 实践贡献：解决了什么实际问题？性能如何提升？开源了什么资源？
 
-### 3. 发表信息
-- 发表会议/期刊（如已发表）
-- arXiv编号及提交日期
-- 论文类型（综述/研究论文/短文等）
+### 3. 技术方法
+- 整体方法论思路和技术架构
+- 关键技术组件和创新点
+- 方法流程和算法细节
+- 相比现有方法的技术优势
 
-## 输出格式
+### 4. 主要结果
+- 实验设置：数据集、评估指标、对比方法
+- 核心实验的关键数据和性能提升
+- 消融实验分析：关键组件的有效性验证
+- 结果分析：为什么能取得这样的结果？
 
-请使用以下结构化格式输出（Markdown）：
-
-```markdown
-# 基本信息
-
-## 作者与机构
-- **作者**: [作者列表]
-- **机构**: [机构名称]
-
-## 研究领域
-- **一级领域**: [领域名称]
-- **二级领域**: [具体方向]
-- **关键词**: [关键词1, 关键词2, ...]
-
-## 发表信息
-- **来源**: [会议/期刊/arXiv]
-- **编号**: [论文ID]
-- **日期**: [发表日期]
-```
-
-要求：
-- 专业术语保留英文原文，首次出现时加括号注释
-- 机构名称使用中文官方译名或保留英文
-- 信息完整、准确、精简"""
-
-    @staticmethod
-    def _background_prompt() -> str:
-        return """你是一位专业的科研论文分析师。请分析论文的研究背景与动机，并使用中文输出：
-
-## 分析视角
-
-从以下维度系统性地分析研究背景：
-
-### 1. 领域定位
-- 该研究属于哪个大的研究方向？
-- 当前该领域的发展趋势如何？
-- 该方向在学术界/工业界的重要性
-
-### 2. 研究动机
-- 为什么需要做这项研究？（实际需求/理论缺口）
-- 现状存在什么核心问题？
-- 解决这个问题有什么价值？
-
-### 3. 知识缺口
-- 现有研究在哪些方面存在不足？
-- 本文要填补的具体gap是什么？
-- 为什么这个gap重要且有挑战性？
-
-### 4. 相关工作
-- 引用了哪些最相关的前沿工作？
-- 本文与这些工作的关系是什么？
-- 在现有研究基础上的推进点
+### 5. 结论与启示
+- 核心结论：2-3句话总结论文的主要发现和贡献
+- 研究意义：学术价值、应用价值、对后续研究的启发
+- 局限性：方法的适用范围和限制条件、未解决的问题
+- 未来方向：可预见的后续研究方向
 
 ## 输出格式
 
 ```markdown
-# 研究背景
+# 内容摘要
 
-## 领域定位
-[1-2句话描述研究领域的定位和重要性]
+## 研究背景
+[1-2段描述研究领域定位、发展现状、核心问题和研究动机]
 
-## 研究动机
-[清晰阐述为什么需要这项研究]
+## 核心贡献
+### 主要创新点
+[清晰列出1-3个核心创新，说明具体是什么，与现有方法的本质区别]
 
-## 核心问题与知识缺口
-- **现有局限**: [当前方法的不足]
-- **研究gap**: [本文要填补的具体空白]
-- **挑战性**: [为什么这个问题有难度]
+### 理论与实践贡献
+- **理论贡献**: [理论层面的突破]
+- **实践贡献**: [解决的问题、性能提升、资源贡献]
 
-## 相关工作
-[简要介绍最相关的2-3项前沿工作及其与本文的关系]
-```
-
-要求：
-- 使用专业的学术中文表述
-- 技术术语保留英文原文（首次出现加注释）
-- 逻辑清晰，层次分明，控制在300-500字"""
-
-    @staticmethod
-    def _contributions_prompt() -> str:
-        return """你是一位专业的科研论文分析师。请分析论文的核心创新点，并使用中文输出：
-
-## 分析要求
-
-从以下维度系统性地提炼核心贡献：
-
-### 1. 主要创新
-- 提出了什么新方法/新模型/新理论？
-- 与现有方法相比，本质区别在哪里？
-- 创新点的技术亮点是什么？
-
-### 2. 理论贡献
-- 在理论层面有什么突破？
-- 是否提出了新的问题定义/框架/范式？
-- 理论分析或证明的核心要点
-
-### 3. 实践贡献
-- 解决了什么实际问题？
-- 性能提升的具体表现（如果已知）
-- 开源了什么资源（数据集/代码/模型）
-
-### 4. 影响力
-- 该工作对领域的影响如何？
-- 可能的后续研究方向启发
-
-## 输出格式
-
-```markdown
-# 核心贡献
-
-## 主要创新点
-[清晰列出本文的1-3个核心创新，每个创新说明具体是什么]
-
-## 理论贡献
-[如果有理论突破，说明理论层面贡献；否则说明设计理念的创新性]
-
-## 实践贡献
-- **问题解决**: [解决了什么具体问题]
-- **性能提升**: [相比baseline的提升，如果实验部分已完成]
-- **资源贡献**: [开源的数据集/代码/模型等]
-
-## 技术亮点
-[用2-3句话概括最亮的技术特色]
-```
-
-要求：
-- 突出"创新性"和"贡献度"
-- 使用专业术语但表述清晰
-- 控制在300-400字"""
-
-    @staticmethod
-    def _problem_prompt() -> str:
-        return """你是一位专业的科研论文分析师。请分析论文要解决的核心问题，并使用中文输出：
-
-## 分析要求
-
-### 1. 问题定义
-- 本文要解决的具体问题是什么？
-- 问题的形式化定义（如果论文给出）
-- 问题的输入和输出是什么？
-
-### 2. 问题重要性
-- 这个问题为什么重要？
-- 有什么实际应用场景或理论价值？
-- 不解决这个问题会有什么后果？
-
-### 3. 技术挑战
-- 该问题的难点在哪里？
-- 为什么现有方法无法很好地解决？
-- 需要克服哪些技术障碍？
-
-### 4. 问题边界
-- 问题的适用范围和限制条件
-- 什么样的场景下这个问题不适用
-- 与其他相关问题的区别
-
-## 输出格式
-
-```markdown
-# 问题陈述
-
-## 核心问题
-[清晰定义本文要解决的具体问题]
-
-## 问题重要性
-[说明为什么这个问题值得研究]
-
-## 技术挑战
-- **挑战1**: [具体难点]
-- **挑战2**: [具体难点]
-- **挑战3**: [具体难点]
-
-## 现有方法的局限
-[现有方法为什么无法有效解决此问题]
-```
-
-要求：
-- 问题定义要精确、具体
-- 说明清楚"为什么难"
-- 控制在200-300字"""
-
-    @staticmethod
-    def _methods_prompt() -> str:
-        return """你是一位专业的科研论文分析师。请分析论文的技术方法，并使用中文输出：
-
-## 分析要求
-
-### 1. 整体框架
-- 方法论的整体思路是什么？
-- 采用了什么技术架构或范式？
-- 方法的流程步骤是什么？
-
-### 2. 核心技术
-- 使用了哪些关键技术或算法？
-- 关键模块的设计思想
-- 模型/算法的核心创新点
-
-### 3. 技术细节
-- 重要的技术组件
-- 损失函数或优化目标（如有）
-- 训练策略或推理过程
-
-### 4. 方法论特点
-- 方法的主要优势
-- 相比现有方法的技术差异
-- 计算复杂度或效率考虑
-
-## 输出格式
-
-```markdown
-# 技术方法
-
-## 整体框架
+## 技术方法
+### 整体框架
 [概述方法论的总体思路和技术架构]
 
-## 核心技术
-### 技术组件1：[名称]
-- **功能**: [该组件的作用]
-- **创新点**: [设计特色]
-
-### 技术组件2：[名称]
-- **功能**: [该组件的作用]
-- **创新点**: [设计特色]
-
-## 方法流程
-[用简洁的语言描述方法的主要步骤]
-
-## 技术优势
-[相比现有方法的技术优势和特点]
-```
-
-要求：
-- 技术术语使用英文原文
-- 重点突出"如何做"而非泛泛而谈
-- 配合公式或伪代码描述更佳（如果论文中有）
-- 控制在400-600字"""
-
-    @staticmethod
-    def _results_prompt() -> str:
-        return """你是一位专业的科研论文分析师。请分析论文的实验结果，并使用中文输出：
-
-## 分析要求
-
-### 1. 实验设置
-- 使用了哪些数据集？
-- 评估指标是什么？
-- 对比了哪些baseline方法？
-
-### 2. 主要结果
-- 核心实验的关键数据
-- 定量结果的具体数值
-- 与baseline的性能对比
-
-### 3. 消融实验
-- 关键模块的贡献分析
-- 设计选择的有效性验证
-
-### 4. 结果分析
-- 为什么能取得这样的结果？
-- 方法的哪些特性带来了性能提升
-- 结果的含义和启示
-
-## 输出格式
-
-```markdown
-# 实验结果
-
-## 实验设置
-- **数据集**: [使用的数据集]
-- **评估指标**: [具体的评估指标]
-- **对比方法**: [baseline方法列表]
+### 关键技术
+[核心技术组件、创新设计、方法流程]
 
 ## 主要结果
-### [任务1]结果
-| 方法 | 指标1 | 指标2 | 指标3 |
-|------|-------|-------|-------|
-| Baseline1 | XX.X | XX.X | XX.X |
-| Baseline2 | XX.X | XX.X | XX.X |
-| **本文方法** | **XX.X** | **XX.X** | **XX.X** |
+### 实验设置
+[数据集、评估指标、对比方法]
 
-### [任务2]结果
-[类似格式]
+### 核心结果
+[关键数据、性能对比表格]
 
-## 消融实验
-[关键组件的消融分析结果]
+### 结果分析
+[解释方法为什么有效，哪些设计带来了提升]
 
-## 结果分析
-[解释为什么本文方法有效，哪些设计带来了提升]
+## 结论与启示
+- **核心结论**: [主要发现和贡献]
+- **研究意义**: [学术和应用价值]
+- **局限性**: [方法限制和未解决问题]
+- **未来方向**: [后续研究方向]
 ```
 
 要求：
-- 准确提取关键数值结果
-- 使用表格呈现对比数据
-- 说明结果的意义
-- 控制在300-500字"""
+- 使用专业的学术中文表述，技术术语保留英文原文（首次出现加注释）
+- 各部分逻辑连贯，形成有机整体，而非简单拼接
+- 重点突出创新点和贡献
+- 内容全面但精简，控制在600-800字"""
 
     @staticmethod
-    def _conclusions_prompt() -> str:
-        return """你是一位专业的科研论文分析师。请总结论文的结论与启示，并使用中文输出：
+    def _deep_research_prompt() -> str:
+        return """你是一位专业的科研论文深度分析师。请使用"5-why分析法"对论文的核心创新点进行深度研究，并使用中文输出：
 
-## 分析要求
+## 5-Why分析法框架
 
-### 1. 核心结论
-- 本文的主要发现是什么？
-- 回答了什么研究问题？
-- 验证了什么假设？
+5-why分析法是一种通过连续追问"为什么"来探究问题根本原因的深度分析方法。我们将从论文的核心创新点出发，进行5个层次的深度追问。
 
-### 2. 研究意义
-- 对领域有什么贡献？
-- 可能的实际应用价值
-- 对后续研究的启发
+### 第1个Why：根本问题（Why 1 - Root Problem）
+**问题：为什么需要这个核心创新？**
+- 这个创新要解决的根本问题是什么？
+- 这个问题为什么重要？有什么实际或理论价值？
+- 不解决这个问题会带来什么后果？
+- 这个问题在当前研究领域处于什么地位？
 
-### 3. 局限性
-- 作者承认了哪些不足？
-- 方法有什么适用范围限制？
-- 还有哪些未解决的问题？
+### 第2个Why：技术机制（Why 2 - Technical Mechanism）
+**问题：这个创新的核心技术原理是什么？**
+- 该创新如何通过技术手段解决根本问题？
+- 核心技术机制是什么？如何运作？
+- 为什么这个技术机制能够有效解决问题？
+- 技术设计的关键洞察或突破点在哪里？
 
-### 4. 未来工作
-- 作者建议了哪些研究方向？
-- 该领域可能的发展趋势
+### 第3个Why：有效性来源（Why 3 - Source of Effectiveness）
+**问题：为什么这个创新是有效的？**
+- 该创新能够取得效果的直接原因是什么？
+- 技术机制与问题解决之间的因果关系是什么？
+- 为什么比现有方法更有效？本质优势在哪里？
+- 理论保证或实证证据是什么？
+
+### 第4个Why：深层价值（Why 4 - Deep Value）
+**问题：这个创新的深层价值是什么？**
+- 该创新对研究领域带来了什么范式性影响？
+- 改变了人们对该问题的哪些认知或假设？
+- 开启了哪些新的研究方向或可能性？
+- 跨领域的借鉴价值和应用前景如何？
+
+### 第5个Why：长远意义（Why 5 - Long-term Significance）
+**问题：这个创新的长远意义是什么？**
+- 该创新在未来5-10年可能产生什么影响？
+- 可能催生什么样的后续工作或技术演进？
+- 对整个学科或相关产业的发展方向有何指引？
+- 是否具有成为经典方法或开创性工作的潜力？
 
 ## 输出格式
 
 ```markdown
-# 结论与启示
+# 深度研究
 
-## 核心结论
-[2-3句话总结论文的核心发现和贡献]
+## 核心创新点
+[1-2句话清晰界定论文的核心创新是什么]
 
-## 研究意义
-- **学术价值**: [对领域的理论贡献]
-- **应用价值**: [实际应用的潜力]
-- **方法启示**: [对后续研究的方法论启发]
+## 第1层追问：根本问题
+### 为什么需要这个创新？
+[回答根本问题的4个方面]
 
-## 局限性
-- **方法局限**: [适用范围和限制条件]
-- **待解决问题**: [尚未解决的问题]
+## 第2层追问：技术机制
+### 核心技术原理是什么？
+[回答技术机制的4个方面]
 
-## 未来方向
-[作者建议的或可预见的后续研究方向]
+## 第3层追问：有效性来源
+### 为什么这个创新是有效的？
+[回答有效性的4个方面]
+
+## 第4层追问：深层价值
+### 这个创新的深层价值是什么？
+[回答深层价值的4个方面]
+
+## 第5层追问：长远意义
+### 这个创新的长远意义是什么？
+[回答长远意义的4个方面]
 ```
 
 要求：
-- 结论要与贡献部分呼应但不重复
-- 客观评价局限性
-- 展望要有前瞻性
-- 控制在200-300字"""
+- 每一层的追问都要深入到本质，避免表面化描述
+- 技术术语使用英文原文（首次出现时加中文注释）
+- 逻辑递进，层层深入，形成完整的分析链条
+- 每层回答控制在150-200字，总计800-1000字
+- 分析要有深度，展现对论文创新本质的深刻理解"""
+
+    @staticmethod
+    def _tldr_prompt() -> str:
+        return """你是一位专业的科研论文分析师。请将前面的内容摘要和深度研究整合成一段简洁的TLDR（Too Long; Didn't Read）总结，并使用中文输出：
+
+## 分析要求
+
+TLDR（"太长不看"）是一种单段式快速总结，让读者在30秒内掌握论文的核心信息。请整合"内容摘要"和"深度研究"的精华，形成一段精炼的总结。
+
+### 内容结构
+1. **研究主题**（1句话）：这篇论文研究什么问题？
+2. **核心创新**（1-2句话）：提出了什么新方法/新发现？
+3. **主要结果**（1句话）：取得了什么关键成果？
+4. **价值意义**（1句话）：为什么重要？有什么影响？
+
+### 写作原则
+- 开门见山，直接点明核心
+- 每句话都有实质性内容，避免冗余
+- 突出创新点和贡献，而非背景信息
+- 使用简洁有力的学术表述
+- 技术术语保留英文原文（关键术语可加括号注释）
+
+## 输出格式
+
+```
+本文[研究主题]，提出了[核心创新]。实验/理论表明，[主要结果]。该工作[价值意义]。
+```
+
+示例：
+```
+本文研究大语言模型在长文本理解上的局限性，提出了FlashAttention算法来实现高效注意力机制。实验表明，该方法在保持模型性能的同时将训练速度提升了2-3倍，内存使用减少了一半。该工作为长序列建模提供了新的技术范式，已被广泛应用于GPT-4等大模型的训练中。
+```
+
+要求：
+- 严格控制在3-5句话，100-150字
+- 一段式输出，不分段
+- 信息密度高，每句话都有价值
+- 避免使用"本文提出..."等重复表达，自然流畅"""
 
 
 @dataclass
@@ -623,32 +429,55 @@ class PaperSummarizer:
         """
         Run the summarization workflow for a paper.
 
-        Executes the specified steps (or all steps if not specified)
-        and optionally saves results to the database.
+        Executes the specified steps. If not specified, uses the new 3-step workflow:
+        CONTENT_SUMMARY, DEEP_RESEARCH, TLDR.
 
         Args:
             paper: Paper record to summarize.
-            steps: List of steps to execute. If None, runs all steps.
+            steps: List of steps to execute. If None, runs new 3-step workflow.
             save_to_db: Whether to save results to database.
 
         Returns:
             List of SummaryResult objects, one per step.
         """
+        logger.info(f"Starting summarization for paper {paper.id}: {paper.title[:50]}...")
+
+        # Validation 1: Title must exist
+        if not paper.title or paper.title.strip() == "":
+            logger.warning(f"Paper {paper.id} has no title, skipping summarization")
+            return []
+
+        # Validation 2: At least need title or abstract
+        if not paper.abstract:
+            logger.warning(
+                f"Paper {paper.id} ('{paper.title[:50]}...') has no abstract"
+            )
+
+        # Validation 3: Need PDF or text file
         if not paper.pdf_path and not paper.text_path:
             logger.error(f"Paper {paper.id} has no PDF or text file")
             return []
 
         # Parse PDF if needed
         if paper.text_path:
+            logger.debug(f"Using existing text file: {paper.text_path}")
             full_text = Path(paper.text_path).read_text(encoding="utf-8")
         elif paper.pdf_path:
-            parse_result = self.pdf_parser.parse(paper.pdf_path)
+            logger.debug(f"Parsing PDF file: {paper.pdf_path}")
+            parse_result = self.pdf_parser.parse(paper)
             if not parse_result.success:
                 logger.error(f"Failed to parse PDF for paper {paper.id}")
                 return []
             full_text = parse_result.text
+            # Parser now automatically sets paper.text_path
         else:
             full_text = None
+
+        # Validation 4: Check text quality
+        if full_text and len(full_text.strip()) < 100:
+            logger.warning(
+                f"Paper {paper.id} extracted text too short ({len(full_text)} chars)"
+            )
 
         # Prepare text for LLM
         paper_text = self._prepare_paper_text(
@@ -657,13 +486,41 @@ class PaperSummarizer:
             full_text=full_text,
         )
 
-        # Run specified steps (or all steps)
-        steps_to_run = steps or list(SummaryStep)
+        # Validation 5: Check prepared text length
+        if len(paper_text.strip()) < 50:
+            logger.warning(
+                f"Paper {paper.id} prepared text too short ({len(paper_text)} chars), skipping"
+            )
+            return []
+
+        logger.debug(f"Prepared text length: {len(paper_text)} chars")
+
+        # Use new 3-step workflow by default
+        if steps is None:
+            steps = [
+                SummaryStep.CONTENT_SUMMARY,
+                SummaryStep.DEEP_RESEARCH,
+                SummaryStep.TLDR
+            ]
+            logger.info(f"Running 3-step summarization workflow: {[s.value for s in steps]}")
+
+        # Run specified steps
+        steps_to_run = steps
         results: List[SummaryResult] = []
 
         for step in steps_to_run:
+            logger.info(f"Running step: {step.display_name} for paper {paper.id}")
             result = self._run_step(step, paper_text)
             results.append(result)
+
+            if result.success:
+                logger.info(
+                    f"Step {step.display_name} completed: {len(result.content)} chars"
+                )
+            else:
+                logger.warning(
+                    f"Step {step.display_name} failed: {result.error_message}"
+                )
 
             # Save to database if requested and successful
             if save_to_db and result.success:

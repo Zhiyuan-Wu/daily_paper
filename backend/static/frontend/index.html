@@ -142,6 +142,76 @@
                 <h1><i class="fas fa-cog"></i> 我的设置</h1>
             </div>
 
+            <!-- Auto Refresh Config (moved to top) -->
+            <div class="card">
+                <h2><i class="fas fa-sync-alt"></i> 自动刷新</h2>
+                <form id="autoRefreshForm">
+                    <div class="form-group">
+                        <label><i class="fas fa-toggle-on"></i> 启用自动刷新</label>
+                        <div class="toggle-switch">
+                            <input type="checkbox" id="autoRefreshEnabled" name="enabled">
+                            <label for="autoRefreshEnabled" class="toggle-label"></label>
+                            <span id="autoRefreshStatusText" class="toggle-status">禁用</span>
+                        </div>
+                        <small class="form-help">启用后将定期自动获取新论文</small>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-calendar-alt"></i> 周期类型</label>
+                        <select id="scheduleType" name="schedule_type">
+                            <option value="daily">每天</option>
+                            <option value="weekly">每周</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="dailyTimeGroup">
+                        <label><i class="fas fa-clock"></i> 每天时间</label>
+                        <div style="display: flex; gap: 10px;">
+                            <select id="dailyHour" name="daily_hour" style="flex: 1;">
+                            </select>
+                            <span style="display: flex; align-items: center;">时</span>
+                            <select id="dailyMinute" name="daily_minute" style="flex: 1;">
+                            </select>
+                            <span style="display: flex; align-items: center;">分</span>
+                        </div>
+                    </div>
+                    <div class="form-group" id="weeklyGroup" style="display: none;">
+                        <label><i class="fas fa-calendar-week"></i> 每周星期</label>
+                        <select id="weeklyDay" name="weekly_day">
+                            <option value="0">星期一</option>
+                            <option value="1">星期二</option>
+                            <option value="2">星期三</option>
+                            <option value="3">星期四</option>
+                            <option value="4">星期五</option>
+                            <option value="5">星期六</option>
+                            <option value="6">星期日</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="weeklyTimeGroup" style="display: none;">
+                        <label><i class="fas fa-clock"></i> 每周时间</label>
+                        <div style="display: flex; gap: 10px;">
+                            <select id="weeklyHour" name="weekly_hour" style="flex: 1;">
+                            </select>
+                            <span style="display: flex; align-items: center;">时</span>
+                            <select id="weeklyMinute" name="weekly_minute" style="flex: 1;">
+                            </select>
+                            <span style="display: flex; align-items: center;">分</span>
+                        </div>
+                    </div>
+                    <div class="form-group" id="lastRunInfo" style="display: none;">
+                        <label><i class="fas fa-history"></i> 运行历史</label>
+                        <p>上次运行: <span id="lastRunTime">-</span></p>
+                        <p>下次运行: <span id="nextRunTime">-</span></p>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" id="viewHistoryBtn">
+                            <i class="fas fa-list"></i> 查看历史任务
+                        </button>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> 保存配置
+                        </button>
+                    </div>
+                </form>
+            </div>
+
             <!-- Interests -->
             <div class="card">
                 <h2><i class="fas fa-heart"></i> 研究兴趣</h2>
@@ -231,37 +301,6 @@
                     <div class="form-actions">
                         <button type="submit" class="btn btn-primary">
                             <i class="fas fa-save"></i> 保存
-                        </button>
-                    </div>
-                </form>
-            </div>
-
-            <!-- Auto Refresh Config -->
-            <div class="card">
-                <h2><i class="fas fa-sync-alt"></i> 自动刷新</h2>
-                <form id="autoRefreshForm">
-                    <div class="form-group">
-                        <label><i class="fas fa-toggle-on"></i> 启用自动刷新</label>
-                        <div class="toggle-switch">
-                            <input type="checkbox" id="autoRefreshEnabled" name="enabled">
-                            <label for="autoRefreshEnabled" class="toggle-label"></label>
-                            <span id="autoRefreshStatusText" class="toggle-status">禁用</span>
-                        </div>
-                        <small class="form-help">启用后将定期自动获取新论文</small>
-                    </div>
-                    <div class="form-group">
-                        <label><i class="fas fa-clock"></i> 刷新间隔（小时）</label>
-                        <input type="number" id="autoRefreshInterval" name="interval_hours" value="24" min="1" max="168">
-                        <small class="form-help">建议间隔：24小时（每日）</small>
-                    </div>
-                    <div class="form-group" id="lastRunInfo" style="display: none;">
-                        <label><i class="fas fa-history"></i> 运行历史</label>
-                        <p>上次运行: <span id="lastRunTime">-</span></p>
-                        <p>下次运行: <span id="nextRunTime">-</span></p>
-                    </div>
-                    <div class="form-actions">
-                        <button type="submit" class="btn btn-primary">
-                            <i class="fas fa-save"></i> 保存配置
                         </button>
                     </div>
                 </form>

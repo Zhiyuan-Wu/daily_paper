@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch, MagicMock
 
 from daily_paper.parsers.pdf_parser import PDFParser, ParseResult, Section
 from daily_paper.config import OCRConfig
+from daily_paper.database import Paper
 
 
 class TestSection:
@@ -138,7 +139,16 @@ class TestPDFParser:
     def test_parse_file_not_found(self):
         """Test parsing non-existent file."""
         parser = PDFParser()
-        result = parser.parse("/nonexistent/file.pdf")
+
+        # Create a Paper object with non-existent PDF path
+        test_paper = Paper(
+            source="test",
+            paper_id="test_not_found",
+            title="Test Not Found Paper",
+            pdf_path="/nonexistent/file.pdf"
+        )
+
+        result = parser.parse(test_paper)
 
         assert result.success is False
         assert "not found" in result.error_message.lower()

@@ -144,7 +144,7 @@ window.createModal = function createModal(modalId, title, content) {
         <div class="modal-content">
             <div class="modal-header">
                 <h2>${title}</h2>
-                <span class="close-btn" onclick="closeModal('${modalId}')">&times;</span>
+                <span class="modal-close" onclick="closeModal('${modalId}')">&times;</span>
             </div>
             <div class="modal-body">
                 ${content}
@@ -167,6 +167,13 @@ window.openModal = function openModal(modalId) {
         document.body.style.overflow = 'hidden';
         document.body.style.position = 'fixed';
         document.body.style.width = '100%';
+
+        // 添加点击外部关闭功能
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+                closeModal(modalId);
+            }
+        });
     }
 }
 

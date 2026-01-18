@@ -262,17 +262,44 @@ const API = {
     /**
      * Update scheduler config
      */
-    updateSchedulerConfig: async (enabled, intervalHours) => {
+    updateSchedulerConfig: async (enabled, scheduleType, dailyTime, weeklyDay, weeklyTime) => {
         const params = new URLSearchParams();
         if (enabled !== null) {
             params.append('enabled', enabled.toString());
         }
-        if (intervalHours !== null) {
-            params.append('interval_hours', intervalHours.toString());
+        if (scheduleType !== null) {
+            params.append('schedule_type', scheduleType);
+        }
+        if (dailyTime !== null) {
+            params.append('daily_time', dailyTime);
+        }
+        if (weeklyDay !== null) {
+            params.append('weekly_day', weeklyDay.toString());
+        }
+        if (weeklyTime !== null) {
+            params.append('weekly_time', weeklyTime);
         }
         return await apiRequest(`/refresh/scheduler?${params}`, {
             method: 'PUT'
         });
+    },
+
+    /**
+     * Get task history list
+     */
+    getTaskHistory: async (skip = 0, limit = 20) => {
+        const params = new URLSearchParams({
+            skip: skip.toString(),
+            limit: limit.toString()
+        });
+        return await apiRequest(`/refresh/history?${params}`);
+    },
+
+    /**
+     * Get task detail with steps
+     */
+    getTaskDetail: async (taskId) => {
+        return await apiRequest(`/refresh/history/${taskId}`);
     },
 };
 

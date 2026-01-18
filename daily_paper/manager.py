@@ -163,8 +163,12 @@ class DownloadManager:
         Returns:
             List of Paper records (both newly created and existing).
         """
+        logger.info(f"Fetching papers for date {target_date} from sources: {sources or 'all'}")
+
         sources_to_query = sources or list(self.downloaders.keys())
         all_papers: List[Paper] = []
+        new_papers_count = 0
+        existing_papers_count = 0
 
         for source in sources_to_query:
             downloader = self.get_downloader(source)
@@ -173,6 +177,7 @@ class DownloadManager:
                 continue
 
             try:
+                logger.info(f"Querying {source} for papers on {target_date}")
                 metadata_list = downloader.get_papers_by_date(target_date)
                 logger.info(
                     f"Found {len(metadata_list)} papers from {source} for {target_date}"
@@ -183,14 +188,21 @@ class DownloadManager:
                     existing = self._paper_exists(metadata.source, metadata.paper_id)
                     if existing:
                         all_papers.append(existing)
+                        existing_papers_count += 1
                     else:
                         # Create new record
                         paper = self._create_paper_record(metadata)
                         all_papers.append(paper)
+                        new_papers_count += 1
+                        logger.debug(f"Created new paper record: {paper.paper_id} - {paper.title[:50]}...")
 
             except Exception as e:
                 logger.error(f"Error fetching papers from {source}: {e}")
 
+        logger.info(
+            f"Fetching complete: {len(all_papers)} total papers "
+            f"({new_papers_count} new, {existing_papers_count} existing)"
+        )
         return all_papers
 
     def download_paper(self, paper: Paper) -> Path:
@@ -211,19 +223,28 @@ class DownloadManager:
             FileNotFoundError: If the paper cannot be found.
             IOError: If the download fails.
         """
+        logger.info(f"Starting PDF download for paper {paper.paper_id} ({paper.title[:50]}...)")
+
         downloader = self.get_downloader(paper.source)
         if not downloader:
             raise ValueError(f"No downloader registered for source: {paper.source}")
 
         # Download to configured directory
         dest_dir = self.config.paths.download_dir
+        logger.debug(f"Downloading to directory: {dest_dir}")
+
         pdf_path = downloader.download_paper(paper.paper_id, dest_dir)
 
         # Update paper record
         paper.pdf_path = str(pdf_path)
         self.session.commit()
 
-        logger.info(f"Downloaded PDF for {paper.paper_id}: {pdf_path}")
+        # Get file size for logging
+        file_size = Path(pdf_path).stat().st_size / (1024 * 1024)  # Convert to MB
+        logger.info(
+            f"Successfully downloaded PDF for {paper.paper_id}: "
+            f"{pdf_path.name} ({file_size:.2f} MB)"
+        )
         return pdf_path
 
     def get_paper(self, paper_id: int) -> Optional[Paper]:

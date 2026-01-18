@@ -13,6 +13,7 @@ The downloader supports:
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -21,6 +22,8 @@ from typing import List, Optional
 import arxiv as arxiv_lib
 
 from daily_paper.downloaders.base import BaseDownloader, PaperMetadata
+
+logger = logging.getLogger(__name__)
 
 
 class ArxivDownloader(BaseDownloader):
@@ -50,7 +53,7 @@ class ArxivDownloader(BaseDownloader):
         "q-fin": "Quantitative Finance",
     }
 
-    def __init__(self, categories: Optional[List[str]] = None, max_results: int = 30):
+    def __init__(self, categories: Optional[List[str]] = None, max_results: int = 3):
         """
         Initialize the arXiv downloader.
 
@@ -173,6 +176,8 @@ class ArxivDownloader(BaseDownloader):
         Returns:
             List of PaperMetadata for papers published on target_date.
         """
+        logger.info(f"Fetching arXiv papers for {target_date} from categories: {self.categories}")
+
         query = self._build_date_query(target_date)
         search = arxiv_lib.Search(
             query=query,
@@ -184,6 +189,7 @@ class ArxivDownloader(BaseDownloader):
         papers: List[PaperMetadata] = []
 
         # Fetch results and filter by date
+        logger.debug(f"Querying arXiv API with max_results={self.max_results}")
         for result in self._client.results(search):
             published_date = result.published
 
@@ -202,7 +208,9 @@ class ArxivDownloader(BaseDownloader):
                     pdf_url=result.pdf_url,
                 )
                 papers.append(metadata)
+                logger.debug(f"Matched paper: {arxiv_id} - {result.title[:50]}...")
 
+        logger.info(f"Found {len(papers)} arXiv papers for {target_date}")
         return papers
 
     def download_paper(self, paper_id: str, dest_dir: Path) -> Path:
@@ -224,6 +232,8 @@ class ArxivDownloader(BaseDownloader):
             FileNotFoundError: If the paper cannot be found on arXiv.
             IOError: If the download fails.
         """
+        logger.info(f"Starting download for arXiv paper {paper_id}")
+
         dest_dir = Path(dest_dir)
         dest_dir.mkdir(parents=True, exist_ok=True)
 
@@ -234,7 +244,9 @@ class ArxivDownloader(BaseDownloader):
         search = arxiv_lib.Search(id_list=[paper_id])
         try:
             result = next(self._client.results(search))
+            logger.debug(f"Retrieved metadata for {paper_id}: {result.title[:50]}...")
         except StopIteration:
+            logger.error(f"Paper not found on arXiv: {paper_id}")
             raise FileNotFoundError(f"Paper not found on arXiv: {paper_id}")
 
         # Create filename: ID_sanitized_title.pdf
@@ -242,22 +254,22 @@ class ArxivDownloader(BaseDownloader):
         filename = f"{base_id}_{title_part}.pdf"
         dest_path = dest_dir / filename
 
-        # Check if file already exists by comparing hash
+        # Check if file already exists
         if dest_path.exists():
-            # Download to temp and compare hashes
-            import tempfile
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-                tmp_path = Path(tmp.name)
-                result.download_pdf(dest_dir, filename=f"tmp_{base_id}.pdf")
-                temp_hash = hashlib.sha256(tmp_path.read_bytes()).hexdigest()
-                existing_hash = hashlib.sha256(dest_path.read_bytes()).hexdigest()
-                tmp_path.unlink()
-                if temp_hash == existing_hash:
-                    return dest_path
+            file_size = dest_path.stat().st_size / (1024 * 1024)
+            logger.info(f"PDF already exists: {dest_path.name} ({file_size:.2f} MB)")
+            return dest_path
 
         # Download the PDF
         try:
+            logger.debug(f"Downloading PDF to {dest_path}")
             downloaded_path = result.download_pdf(dest_dir, filename=filename)
+            file_size = Path(downloaded_path).stat().st_size / (1024 * 1024)
+            logger.info(
+                f"Successfully downloaded arXiv PDF {paper_id}: "
+                f"{dest_path.name} ({file_size:.2f} MB)"
+            )
             return Path(downloaded_path)
         except Exception as e:
+            logger.error(f"Failed to download PDF for {paper_id}: {e}")
             raise IOError(f"Failed to download PDF for {paper_id}: {e}")

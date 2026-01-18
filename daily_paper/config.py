@@ -314,6 +314,62 @@ class RecommendationConfig:
 
 
 @dataclass
+class LogConfig:
+    """
+    Configuration for application logging.
+
+    Controls logging behavior including log level, output format,
+    and file rotation settings.
+
+    Attributes:
+        level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL).
+        log_dir: Directory for log files.
+        log_file: Name of the log file.
+        max_bytes: Maximum size of a single log file before rotation.
+        backup_count: Number of backup log files to keep.
+        format_string: Log message format string.
+        date_format: Date format for log timestamps.
+        console_output: Whether to also output logs to console.
+    """
+
+    level: str = "INFO"
+    log_dir: Path = field(default_factory=lambda: Path("data/logs"))
+    log_file: str = "daily_paper.log"
+    max_bytes: int = 10 * 1024 * 1024  # 10 MB
+    backup_count: int = 5
+    format_string: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    date_format: str = "%Y-%m-%d %H:%M:%S"
+    console_output: bool = True
+
+    @classmethod
+    def from_env(cls) -> "LogConfig":
+        """
+        Create LogConfig from environment variables.
+
+        Creates log directory if it doesn't exist.
+
+        Returns:
+            A configured LogConfig instance.
+        """
+        log_dir = Path(os.getenv("LOG_DIR", "data/logs"))
+        log_dir.mkdir(parents=True, exist_ok=True)
+
+        return cls(
+            level=os.getenv("LOG_LEVEL", "INFO").upper(),
+            log_dir=log_dir,
+            log_file=os.getenv("LOG_FILE", "daily_paper.log"),
+            max_bytes=int(os.getenv("LOG_MAX_BYTES", str(10 * 1024 * 1024))),  # 10 MB
+            backup_count=int(os.getenv("LOG_BACKUP_COUNT", "5")),
+            format_string=os.getenv(
+                "LOG_FORMAT",
+                "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+            ),
+            date_format=os.getenv("LOG_DATE_FORMAT", "%Y-%m-%d %H:%M:%S"),
+            console_output=os.getenv("LOG_CONSOLE_OUTPUT", "true").lower() == "true",
+        )
+
+
+@dataclass
 class ReportConfig:
     """
     Configuration for daily report generation.
@@ -367,6 +423,7 @@ class Config:
         embedding: Embedding service configuration.
         recommendation: Recommendation system configuration.
         report: Daily report generation configuration.
+        log: Logging configuration.
     """
 
     llm: LLMConfig = field(default_factory=LLMConfig.from_env)
@@ -377,6 +434,7 @@ class Config:
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig.from_env)
     recommendation: RecommendationConfig = field(default_factory=RecommendationConfig.from_env)
     report: ReportConfig = field(default_factory=ReportConfig.from_env)
+    log: LogConfig = field(default_factory=LogConfig.from_env)
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -403,4 +461,5 @@ class Config:
             embedding=EmbeddingConfig.from_env(),
             recommendation=RecommendationConfig.from_env(),
             report=ReportConfig.from_env(),
+            log=LogConfig.from_env(),
         )

@@ -12,6 +12,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from daily_paper.config import Config
 from daily_paper.parsers import PDFParser
+from daily_paper.database import Paper
 
 # Configure logging
 logging.basicConfig(
@@ -98,8 +99,17 @@ def test_pdf_parser_with_ocr():
 
     parser = PDFParser(config.ocr)
 
+    # Create a temporary Paper object for parsing
+    test_paper = Paper(
+        source="test",
+        paper_id="test_ocr",
+        title="Test OCR Paper",
+        pdf_path=str(pdf_path)
+    )
+
     try:
-        result = parser.parse(pdf_path)
+        # Parser now accepts Paper object directly
+        result = parser.parse(test_paper)
 
         if result.success:
             logger.info(f"✓ PDF parsing successful!")

@@ -11,7 +11,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
 from sqlalchemy import or_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from pathlib import Path
 
 from backend.dependencies import get_db, get_paper_summarizer
@@ -53,8 +53,8 @@ async def list_papers(
     Returns:
         Paginated list of papers with interaction status.
     """
-    # Build base query
-    query = db.query(Paper)
+    # Build base query with eager loading of summaries
+    query = db.query(Paper).options(selectinload(Paper.summaries))
 
     # Apply keyword search
     if keyword:
@@ -80,6 +80,13 @@ async def list_papers(
     # Add interaction status and computed fields
     papers_with_status = []
     for paper in papers:
+        # Extract TLDR from summaries
+        tldr = None
+        for summary in paper.summaries:
+            if summary.summary_type == "tldr":
+                tldr = summary.content
+                break
+
         paper_dict = {
             "id": paper.id,
             "source": paper.source,
@@ -91,6 +98,7 @@ async def list_papers(
             "url": paper.url,
             "has_pdf": bool(paper.pdf_path),
             "has_summary": len(paper.summaries) > 0,
+            "tldr": tldr,
             "interaction_status": None,
             "notes": None,
         }
@@ -130,12 +138,21 @@ async def get_paper(paper_id: int, db: Session = Depends(get_db)):
         paper_id: Paper database ID
 
     Returns:
-        Paper details with interaction status.
+        Paper details with interaction status and TLDR.
     """
-    paper = db.query(Paper).filter(Paper.id == paper_id).first()
+    paper = db.query(Paper).options(selectinload(Paper.summaries)).filter(
+        Paper.id == paper_id
+    ).first()
 
     if not paper:
         raise HTTPException(status_code=404, detail="Paper not found")
+
+    # Extract TLDR from summaries
+    tldr = None
+    for summary in paper.summaries:
+        if summary.summary_type == "tldr":
+            tldr = summary.content
+            break
 
     # Get interaction
     interaction = db.query(PaperInteraction).filter(
@@ -153,6 +170,7 @@ async def get_paper(paper_id: int, db: Session = Depends(get_db)):
         url=paper.url,
         has_pdf=bool(paper.pdf_path),
         has_summary=len(paper.summaries) > 0,
+        tldr=tldr,
         interaction_status=interaction.action if interaction else None,
         notes=interaction.notes if interaction else None,
     )
@@ -198,15 +216,11 @@ async def get_paper_summaries(paper_id: int, db: Session = Depends(get_db)):
     """
     summaries = db.query(Summary).filter(Summary.paper_id == paper_id).all()
 
-    # Map summary types to display names (from workflow.py)
+    # Map summary types to display names (3-step workflow)
     step_names = {
-        "basic_info": "基本信息",
-        "background": "研究背景",
-        "contributions": "核心贡献",
-        "problem": "问题陈述",
-        "methods": "技术方法",
-        "results": "实验结果",
-        "conclusions": "结论与启示",
+        "content_summary": "内容摘要",
+        "deep_research": "深度研究",
+        "tldr": "TLDR总结",
     }
 
     return [

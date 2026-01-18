@@ -46,6 +46,26 @@ async def generate_report(
     Returns:
         Task ID for polling status.
     """
+    # Validation: Check if database has papers with PDF or text files
+    from daily_paper.database import Paper
+    from sqlalchemy import or_
+
+    available_papers = db.query(Paper).filter(
+        or_(
+            Paper.pdf_path.isnot(None),
+            Paper.text_path.isnot(None)
+        )
+    ).count()
+
+    if available_papers == 0:
+        return {
+            "task_id": None,
+            "status": "failed",
+            "error": "无法生成日报：数据库中没有论文。请先获取论文数据。"
+        }
+
+    logger.info(f"Report generation: Found {available_papers} papers with PDF or text files")
+
     # Create task ID
     task_id = str(uuid.uuid4())
     task_status[task_id] = {"status": "generating", "progress": 0}

@@ -15,7 +15,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 
 from daily_paper.config import Config
-from daily_paper.database import DailyReport, InterestTheme, Paper, Summary
+from daily_paper.database import DailyReport, InterestTheme, Paper, PaperInteraction, Summary
 from daily_paper.recommenders.manager import RecommendationManager
 from daily_paper.summarizers.llm_client import LLMClient
 
@@ -89,40 +89,51 @@ class ReportGenerator:
                 'recommendation_results': List[RecommendationResult],
             }
         """
-        logger.info(f"Generating daily report with top-{top_k} papers")
+        logger.info(f"Starting daily report generation with top-{top_k} papers")
 
         # Get recommendations
+        logger.debug("Fetching recommendations for report")
         recommendation_results = self.recommendation_manager.recommend(
             top_k=top_k,
             record_recommendations=True,
         )
 
         if not recommendation_results:
-            logger.warning("No recommendations available for report")
-            return {}
+            logger.warning("No recommendations available for report, using fallback to recent unread papers")
+            # Fallback: Get recently fetched papers that haven't been read yet
+            papers = self._get_recent_unread_papers(top_k)
+            if not papers:
+                logger.error("No papers available for report generation")
+                return {}
+            recommendation_results = None
+            themes_used = []
+        else:
+            logger.info(f"Got {len(recommendation_results)} recommendations for report")
+            # Get paper objects
+            paper_ids = [r.paper_id for r in recommendation_results]
+            papers = (
+                self.session.query(Paper)
+                .filter(Paper.id.in_(paper_ids))
+                .all()
+            )
 
-        # Get paper objects
-        paper_ids = [r.paper_id for r in recommendation_results]
-        papers = (
-            self.session.query(Paper)
-            .filter(Paper.id.in_(paper_ids))
-            .all()
-        )
+            # Sort papers by recommendation rank
+            paper_rank = {r.paper_id: i for i, r in enumerate(recommendation_results)}
+            papers.sort(key=lambda p: paper_rank.get(p.id, float('inf')))
 
-        # Sort papers by recommendation rank
-        paper_rank = {r.paper_id: i for i, r in enumerate(recommendation_results)}
-        papers.sort(key=lambda p: paper_rank.get(p.id, float('inf')))
-
-        # Get active interest themes
-        active_themes = (
-            self.session.query(InterestTheme)
-            .filter(InterestTheme.is_active == True)
-            .all()
-        )
-        themes_used = [theme.theme for theme in active_themes]
+            # Get active interest themes
+            active_themes = (
+                self.session.query(InterestTheme)
+                .filter(InterestTheme.is_active == True)
+                .all()
+            )
+            themes_used = [theme.theme for theme in active_themes]
+            logger.debug(f"Using {len(themes_used)} interest themes")
 
         # Generate highlights
+        logger.debug("Generating AI highlights for report")
         highlights = self._generate_highlights(papers, themes_used)
+        logger.info(f"Generated highlights: {len(highlights)} chars")
 
         # Build report
         report = {
@@ -135,10 +146,47 @@ class ReportGenerator:
 
         # Save to database if requested
         if save_to_db:
+            logger.debug("Saving report to database")
             self._save_report(report)
 
-        logger.info(f"Generated report with {len(papers)} papers")
+        logger.info(
+            f"Report generation complete: {len(papers)} papers, "
+            f"{len(themes_used)} themes, {len(highlights)} chars highlights"
+        )
         return report
+
+    def _get_recent_unread_papers(self, limit: int = 10) -> List[Paper]:
+        """
+        Get recently fetched papers that haven't been read yet.
+
+        A paper is considered "unread" if:
+        - It has no PaperInteraction record, OR
+        - It has a PaperInteraction with action='no_action'
+
+        Args:
+            limit: Maximum number of papers to return.
+
+        Returns:
+            List of Paper objects, sorted by creation date (newest first).
+        """
+        # Subquery to get IDs of papers that have been marked (interested/not_interested)
+        marked_paper_ids = (
+            self.session.query(PaperInteraction.paper_id)
+            .filter(PaperInteraction.action.in_(['interested', 'not_interested']))
+            .distinct()
+        )
+
+        # Get recent papers that are NOT marked
+        papers = (
+            self.session.query(Paper)
+            .filter(~Paper.id.in_(marked_paper_ids))
+            .order_by(Paper.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+
+        logger.info(f"Found {len(papers)} recent unread papers for fallback")
+        return papers
 
     def _generate_highlights(
         self,
@@ -155,14 +203,37 @@ class ReportGenerator:
         Returns:
             Generated highlights text.
         """
+        # Validation: Check if papers list is empty
+        if not papers:
+            logger.warning("No papers provided for highlights generation")
+            return "No papers available for highlights generation."
+
         # Prepare paper summaries
         paper_summaries = []
         for i, paper in enumerate(papers, 1):
-            paper_summaries.append(
-                f"{i}. {paper.title}\n"
-                f"   Authors: {paper.authors or 'Unknown'}\n"
-                f"   Abstract: {paper.abstract[:500] if paper.abstract else 'N/A'}..."
-            )
+            summary_lines = [f"{i}. {paper.title}"]
+            summary_lines.append(f"   Authors: {paper.authors or 'Unknown'}")
+
+            # Prioritize using TLDR summary
+            tldr = None
+            if paper.summaries:
+                for summary in paper.summaries:
+                    if summary.summary_type == "tldr":
+                        tldr = summary.content
+                        break
+                    elif summary.summary_type == "content_summary" and not tldr:
+                        tldr = summary.content
+
+            # Build summary entry
+            if tldr:
+                summary_lines.append(f"   TLDR: {tldr[:300]}...")
+            elif paper.abstract:
+                summary_lines.append(f"   Abstract: {paper.abstract[:500]}...")
+            else:
+                logger.warning(f"Paper {paper.id} has no summary or abstract")
+                summary_lines.append(f"   Abstract: N/A")
+
+            paper_summaries.append("\n".join(summary_lines))
 
         # Build prompt
         system_prompt = """You are a research advisor creating a daily digest of recommended papers.

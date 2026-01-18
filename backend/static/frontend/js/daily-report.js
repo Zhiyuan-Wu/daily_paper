@@ -147,9 +147,9 @@ function showEmptyReportState() {
             <div class="empty-state">
                 <i class="fas fa-calendar-day"></i>
                 <p>该日期暂无日报</p>
-                <button class="btn btn-primary" onclick="generateNewReport()">
-                    <i class="fas fa-magic"></i> 生成日报
-                </button>
+                <p style="font-size: 0.9rem; color: #666; margin-top: 10px;">
+                    请点击右上角的"生成日报"按钮创建报告
+                </p>
             </div>
         `;
     }

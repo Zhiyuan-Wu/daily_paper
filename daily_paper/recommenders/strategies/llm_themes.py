@@ -129,6 +129,31 @@ class LLMThemeRecommender(BaseRecommender):
             logger.warning("No papers after filtering read papers")
             return []
 
+        # Validation: Filter papers with summaries or sufficient abstracts
+        valid_papers = []
+        for paper in papers:
+            # Check if paper has summaries
+            if paper.summaries:
+                valid_papers.append(paper)
+                continue
+
+            # No summary: check abstract length
+            if paper.abstract and len(paper.abstract.strip()) >= 100:
+                valid_papers.append(paper)
+            else:
+                logger.debug(
+                    f"Paper {paper.id} skipped: no summary and short abstract"
+                )
+
+        if not valid_papers:
+            logger.warning(
+                "LLM themes: No valid papers with summaries or sufficient abstracts"
+            )
+            return []
+
+        papers = valid_papers
+        logger.info(f"LLM themes: {len(papers)} valid papers after validation")
+
         # Generate embeddings for themes
         try:
             theme_texts = [theme.theme for theme in active_themes]
@@ -277,9 +302,30 @@ class LLMThemeRecommender(BaseRecommender):
         # Prepare paper summaries for LLM
         paper_summaries = []
         for i, paper in enumerate(interested_papers, 1):
+            # Prioritize using TLDR or content_summary
+            summary_text = None
+            if paper.summaries:
+                for summary in paper.summaries:
+                    if summary.summary_type == "tldr":
+                        summary_text = summary.content
+                        break
+                    elif summary.summary_type == "content_summary":
+                        summary_text = summary.content
+
+            # Fallback to abstract
+            if not summary_text:
+                if paper.abstract and len(paper.abstract.strip()) >= 50:
+                    summary_text = paper.abstract[:500]
+                else:
+                    logger.warning(
+                        f"Paper {paper.id} has no summary or valid abstract, skipping"
+                    )
+                    continue
+
+            # Build summary entry
             summary = f"{i}. Title: {paper.title or 'N/A'}\n"
-            if paper.abstract:
-                summary += f"   Abstract: {paper.abstract[:500]}...\n"
+            if summary_text:
+                summary += f"   Summary: {summary_text}\n"
             paper_summaries.append(summary)
 
         papers_text = "\n\n".join(paper_summaries)

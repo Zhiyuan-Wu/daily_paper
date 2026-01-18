@@ -144,6 +144,35 @@
     color: var(--color-text-secondary);
 }
 
+/* ==================== TLDR Summary ==================== */
+
+.paper-tldr {
+    padding: 16px;
+    margin: 12px 0;
+    background: linear-gradient(135deg, rgba(20, 118, 255, 0.08), rgba(79, 172, 254, 0.12));
+    border-left: 4px solid var(--color-primary);
+    border-radius: 8px;
+    color: var(--color-text);
+    line-height: 1.6;
+}
+
+.paper-tldr-compact {
+    padding: 12px;
+    margin: 0 0 16px 0;
+    background: linear-gradient(135deg, rgba(20, 118, 255, 0.08), rgba(79, 172, 254, 0.12));
+    border-left: 3px solid var(--color-primary);
+    border-radius: 6px;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    color: var(--color-text);
+}
+
+.paper-tldr strong,
+.paper-tldr-compact strong {
+    color: var(--color-primary);
+    font-weight: 600;
+}
+
 .paper-summary-preview {
     margin-top: 16px;
     padding: 12px;

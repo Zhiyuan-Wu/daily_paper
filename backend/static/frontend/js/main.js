@@ -240,6 +240,13 @@ function createPaperCard(paper, compact = false) {
     const interestedBtnClass = paper.interaction_status === 'interested' ? ' btn-active-success' : '';
     const notInterestedBtnClass = paper.interaction_status === 'not_interested' ? ' btn-active-danger' : '';
 
+    // Determine content display: TLDR if available, otherwise abstract
+    const displayContent = paper.tldr
+        ? `<div class="paper-tldr${compact ? '-compact' : ''}"><strong>TLDR:</strong> ${compact ? (paper.tldr.length > 150 ? paper.tldr.substring(0, 150) + '...' : paper.tldr) : paper.tldr}</div>`
+        : paper.abstract
+            ? `<p class="paper-abstract${compact ? '-compact' : ''}">${paper.abstract.substring(compact ? 0 : 0, compact ? 150 : 300)}${(paper.abstract.length > (compact ? 150 : 300)) ? '...' : ''}</p>`
+            : `<p class="paper-abstract${compact ? '-compact' : ''}">N/A</p>`;
+
     if (compact) {
         return `
             <div class="paper-card compact" data-paper-id="${paper.id}" data-status="${paper.interaction_status || 'no_action'}">
@@ -249,7 +256,7 @@ function createPaperCard(paper, compact = false) {
                     <span class="paper-date">${formatDate(paper.published_date)}</span>
                     ${statusBadge}
                 </div>
-                <p class="paper-abstract-compact">${paper.abstract ? paper.abstract.substring(0, 150) + '...' : 'N/A'}</p>
+                ${displayContent}
                 <div class="paper-card-actions">
                     <button class="btn btn-sm btn-primary" onclick="viewPaperDetails(${paper.id})">
                         <i class="fas fa-eye"></i> 查看详情
@@ -286,12 +293,7 @@ function createPaperCard(paper, compact = false) {
                     <span class="paper-authors">${paper.authors || 'Unknown'}</span>
                     <span class="paper-date">${formatDate(paper.published_date)}</span>
                 </div>
-                <p class="paper-abstract">${paper.abstract ? paper.abstract.substring(0, 300) + '...' : 'N/A'}</p>
-                ${paper.has_summary ? `
-                    <div class="paper-summary-preview">
-                        <i class="fas fa-file-alt"></i> 已有摘要
-                    </div>
-                ` : ''}
+                ${displayContent}
             </div>
         `;
     }

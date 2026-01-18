@@ -134,12 +134,78 @@ class InterestedSemanticRecommender(BaseRecommender):
             logger.warning("No papers after filtering read papers")
             return []
 
+        # Validation: Filter interested papers with summaries or abstracts
+        valid_interested = []
+        for paper in interested_papers:
+            text_parts = []
+
+            # Prioritize using summary
+            if paper.summaries:
+                for summary in paper.summaries:
+                    if summary.summary_type in ["tldr", "content_summary"]:
+                        text_parts.append(summary.content)
+                        break
+
+            # Fallback to abstract
+            if not text_parts and paper.abstract:
+                text_parts.append(paper.abstract)
+
+            if not text_parts:
+                logger.warning(
+                    f"Interested paper {paper.id} has no summary or abstract, skipping"
+                )
+                continue
+
+            valid_interested.append(paper)
+
+        if not valid_interested:
+            logger.warning("No valid interested papers with summaries or abstracts")
+            return []
+
+        interested_papers = valid_interested
+
+        # Validation: Filter candidate papers with summaries or abstracts
+        valid_papers = []
+        for paper in papers:
+            text_parts = []
+
+            # Prioritize using summary
+            if paper.summaries:
+                for summary in paper.summaries:
+                    if summary.summary_type in ["tldr", "content_summary"]:
+                        text_parts.append(summary.content)
+                        break
+
+            if not text_parts and paper.abstract:
+                text_parts.append(paper.abstract)
+
+            if not text_parts:
+                logger.debug(
+                    f"Paper {paper.id} has no summary or abstract, skipping"
+                )
+                continue
+
+            valid_papers.append(paper)
+
+        if not valid_papers:
+            logger.warning("No valid candidate papers with summaries or abstracts")
+            return []
+
+        papers = valid_papers
+
         # Generate embeddings for interested papers
         try:
             interested_texts = []
             for paper in interested_papers:
                 text_parts = []
-                if paper.abstract:
+                # Prioritize using summary
+                if paper.summaries:
+                    for summary in paper.summaries:
+                        if summary.summary_type in ["tldr", "content_summary"]:
+                            text_parts.append(summary.content)
+                            break
+                # Fallback to abstract
+                if not text_parts and paper.abstract:
                     text_parts.append(paper.abstract)
                 interested_texts.append(" ".join(text_parts) if text_parts else "No content")
 
@@ -149,7 +215,13 @@ class InterestedSemanticRecommender(BaseRecommender):
             paper_texts = []
             for paper in papers:
                 text_parts = []
-                if paper.abstract:
+                # Prioritize using summary
+                if paper.summaries:
+                    for summary in paper.summaries:
+                        if summary.summary_type in ["tldr", "content_summary"]:
+                            text_parts.append(summary.content)
+                            break
+                if not text_parts and paper.abstract:
                     text_parts.append(paper.abstract)
                 paper_texts.append(" ".join(text_parts) if text_parts else "No content")
 

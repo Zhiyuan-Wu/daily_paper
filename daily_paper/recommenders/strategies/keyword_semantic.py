@@ -117,6 +117,35 @@ class KeywordSemanticRecommender(BaseRecommender):
             logger.warning("No papers after filtering read papers")
             return []
 
+        # Validation: Filter papers with summaries or abstracts
+        valid_papers = []
+        for paper in papers:
+            text_parts = []
+
+            # Prioritize using summary
+            if paper.summaries:
+                for summary in paper.summaries:
+                    if summary.summary_type in ["tldr", "content_summary"]:
+                        text_parts.append(summary.content)
+                        break
+
+            if not text_parts and paper.abstract:
+                text_parts.append(paper.abstract)
+
+            if not text_parts:
+                logger.debug(
+                    f"Paper {paper.id} has no summary or abstract, skipping"
+                )
+                continue
+
+            valid_papers.append(paper)
+
+        if not valid_papers:
+            logger.warning("No valid papers with summaries or abstracts")
+            return []
+
+        papers = valid_papers
+
         # Generate embeddings
         try:
             query_embedding = self.embedding_client.get_embedding(query_text)
@@ -124,9 +153,14 @@ class KeywordSemanticRecommender(BaseRecommender):
             paper_texts = []
             for paper in papers:
                 text_parts = []
-                if paper.abstract:
+                # Prioritize using summary
+                if paper.summaries:
+                    for summary in paper.summaries:
+                        if summary.summary_type in ["tldr", "content_summary"]:
+                            text_parts.append(summary.content)
+                            break
+                if not text_parts and paper.abstract:
                     text_parts.append(paper.abstract)
-                # Could also add summary if available
                 paper_texts.append(" ".join(text_parts) if text_parts else "No content available")
 
             paper_embeddings = self.embedding_client.get_embeddings(paper_texts)

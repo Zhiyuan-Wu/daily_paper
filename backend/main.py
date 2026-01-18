@@ -4,6 +4,19 @@ Daily Paper FastAPI Application.
 Main application entry point with CORS, static files, and router registration.
 """
 
+import logging
+
+# Configure logging FIRST, before any other imports
+from daily_paper.config import Config
+from daily_paper.logging_config import setup_logging
+
+config = Config.from_env()
+setup_logging(config.log)
+
+# Get logger for this module
+logger = logging.getLogger(__name__)
+logger.info("Initializing Daily Paper application...")
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -25,6 +38,8 @@ app = FastAPI(
     description="REST API for the daily paper recommendation system",
     version="0.1.0",
 )
+
+logger.info("FastAPI application created")
 
 # Configure CORS
 app.add_middleware(

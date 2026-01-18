@@ -15,6 +15,9 @@ from daily_paper.database.models import (
     PaperInteraction,
     InterestTheme,
     DailyReport,
+    TaskHistory,
+    TaskStep,
+    SchedulerConfig,
 )
 
 __all__ = [
@@ -27,4 +30,7 @@ __all__ = [
     "PaperInteraction",
     "InterestTheme",
     "DailyReport",
+    "TaskHistory",
+    "TaskStep",
+    "SchedulerConfig",
 ]

@@ -136,6 +136,7 @@ class RecommendationManager:
 
         # Get candidate papers
         if candidate_papers is None:
+            logger.debug("Fetching candidate papers from database")
             candidate_papers = self._get_candidate_papers()
 
         if not candidate_papers:
@@ -221,9 +222,13 @@ class RecommendationManager:
 
         # Record recommendations
         if record_recommendations and fused:
+            logger.debug(f"Recording {len(fused)} recommendations to database")
             self._record_recommendations(fused)
 
-        logger.info(f"Generated {len(fused)} final recommendations")
+        logger.info(
+            f"Recommendation generation complete: {len(fused)} recommendations, "
+            f"top_score={fused[0].score:.4f if fused else 0:.4f}"
+        )
         return fused
 
     def _get_candidate_papers(self) -> List[Paper]:

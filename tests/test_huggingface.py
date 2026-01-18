@@ -38,7 +38,7 @@ def test_huggingface_fetch():
 
         logger.info(f"\n✓ Found {len(papers)} papers from HuggingFace")
 
-        for i, paper in enumerate(papers[:5], 1):
+        for i, paper in enumerate(papers[:2], 1):  # Limit to first 2 to speed up tests
             logger.info(f"\n  {i}. {paper.title[:80]}...")
             logger.info(f"     ID: {paper.paper_id}")
             logger.info(f"     URL: {paper.url}")

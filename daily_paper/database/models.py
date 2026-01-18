@@ -28,6 +28,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     create_engine,
+    Float,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, Session
 
@@ -396,6 +397,201 @@ class DailyReport(Base):
         }
 
 
+class TaskHistory(Base):
+    """
+    Model representing workflow task execution history.
+
+    Stores records of background task executions (e.g., paper fetching,
+    report generation) with status tracking and statistics.
+
+    Attributes:
+        id: Primary key.
+        task_id: Unique task identifier (UUID).
+        task_type: Type of task ('fetch_papers', 'generate_report', etc.).
+        status: Task status ('pending', 'processing', 'completed', 'failed').
+        step: Current step name.
+        progress: Progress percentage (0-100).
+        started_at: Task start timestamp.
+        completed_at: Task completion timestamp (nullable).
+        error_message: Error message if task failed.
+        total_papers: Total number of papers to process.
+        processed_papers: Number of papers successfully processed.
+        failed_papers: Number of papers that failed to process.
+        steps: Related TaskStep records.
+    """
+
+    __tablename__ = "task_history"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(36), unique=True, index=True)
+    task_type: Mapped[str] = mapped_column(String(50), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)
+    step: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    progress: Mapped[int] = mapped_column(Integer, default=0)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now()
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    total_papers: Mapped[int] = mapped_column(Integer, default=0)
+    processed_papers: Mapped[int] = mapped_column(Integer, default=0)
+    failed_papers: Mapped[int] = mapped_column(Integer, default=0)
+
+    # Relationship to task steps
+    steps: Mapped[List["TaskStep"]] = relationship(
+        back_populates="task", cascade="all, delete-orphan"
+    )
+
+    def __repr__(self) -> str:
+        return f"<TaskHistory(task_id={self.task_id}, type={self.task_type}, status={self.status})>"
+
+    def to_dict(self) -> dict:
+        """
+        Convert task history to dictionary representation.
+
+        Returns:
+            Dictionary containing all task history fields.
+        """
+        return {
+            "id": self.id,
+            "task_id": self.task_id,
+            "task_type": self.task_type,
+            "status": self.status,
+            "step": self.step,
+            "progress": self.progress,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "error_message": self.error_message,
+            "total_papers": self.total_papers,
+            "processed_papers": self.processed_papers,
+            "failed_papers": self.failed_papers,
+        }
+
+
+class TaskStep(Base):
+    """
+    Model representing individual steps within a task execution.
+
+    Tracks timing and status for each step in a workflow task,
+    enabling detailed performance analysis.
+
+    Attributes:
+        id: Primary key.
+        task_id: Foreign key to TaskHistory.
+        step_name: Name of the step.
+        status: Step status ('pending', 'processing', 'completed', 'failed').
+        started_at: Step start timestamp.
+        completed_at: Step completion timestamp (nullable).
+        duration_ms: Step duration in milliseconds (nullable).
+        task: Related TaskHistory object.
+    """
+
+    __tablename__ = "task_steps"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[str] = mapped_column(
+        ForeignKey("task_history.task_id"), index=True
+    )
+    step_name: Mapped[str] = mapped_column(String(50), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    started_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    duration_ms: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+
+    # Relationship to task history
+    task: Mapped["TaskHistory"] = relationship(back_populates="steps")
+
+    def __repr__(self) -> str:
+        return f"<TaskStep(task_id={self.task_id}, step={self.step_name}, status={self.status})>"
+
+    def to_dict(self) -> dict:
+        """
+        Convert task step to dictionary representation.
+
+        Returns:
+            Dictionary containing all task step fields.
+        """
+        return {
+            "id": self.id,
+            "task_id": self.task_id,
+            "step_name": self.step_name,
+            "status": self.status,
+            "started_at": self.started_at.isoformat() if self.started_at else None,
+            "completed_at": self.completed_at.isoformat() if self.completed_at else None,
+            "duration_ms": self.duration_ms,
+        }
+
+
+class SchedulerConfig(Base):
+    """
+    Model representing automatic task scheduler configuration.
+
+    Stores settings for periodic task execution (daily/weekly).
+
+    Attributes:
+        id: Primary key (singleton, always 1).
+        enabled: Whether automatic scheduling is enabled.
+        schedule_type: Type of schedule ('daily' or 'weekly').
+        daily_time: Time for daily execution (HH:MM format).
+        weekly_day: Day of week for weekly execution (0=Monday, 6=Sunday).
+        weekly_time: Time for weekly execution (HH:MM format).
+        last_run_at: Timestamp of last execution.
+        next_run_at: Timestamp of next scheduled execution.
+        created_at: Configuration creation timestamp.
+        updated_at: Last update timestamp.
+    """
+
+    __tablename__ = "scheduler_config"
+
+    id: Mapped[int] = mapped_column(primary_key=True, default=1)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    schedule_type: Mapped[str] = mapped_column(String(10), default="daily")
+    daily_time: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)
+    weekly_day: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    weekly_time: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)
+    last_run_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    next_run_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(), onupdate=lambda: datetime.now()
+    )
+
+    def __repr__(self) -> str:
+        return f"<SchedulerConfig(enabled={self.enabled}, type={self.schedule_type})>"
+
+    def to_dict(self) -> dict:
+        """
+        Convert scheduler config to dictionary representation.
+
+        Returns:
+            Dictionary containing all config fields.
+        """
+        return {
+            "id": self.id,
+            "enabled": self.enabled,
+            "schedule_type": self.schedule_type,
+            "daily_time": self.daily_time,
+            "weekly_day": self.weekly_day,
+            "weekly_time": self.weekly_time,
+            "last_run_at": self.last_run_at.isoformat() if self.last_run_at else None,
+            "next_run_at": self.next_run_at.isoformat() if self.next_run_at else None,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 def init_db(database_url: str) -> Session:
     """
     Initialize database connection and create tables.
@@ -415,6 +611,17 @@ def init_db(database_url: str) -> Session:
         >>> session.add(paper)
         >>> session.commit()
     """
+    # Import test utilities to check if we're in test mode
+    try:
+        from tests.test_utils import is_test_mode, assert_test_db_url
+
+        # If test mode is enabled, validate that we're using a test database
+        if is_test_mode():
+            assert_test_db_url(database_url, "init_db()")
+    except ImportError:
+        # test_utils not available (not in test environment)
+        pass
+
     engine = create_engine(database_url)
     Base.metadata.create_all(engine)
     return Session(engine)

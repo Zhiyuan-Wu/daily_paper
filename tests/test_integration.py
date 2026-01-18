@@ -46,7 +46,7 @@ def test_fetch_papers():
     papers = manager.fetch_papers_by_date(target_date, sources=["arxiv"])
 
     logger.info(f"Found {len(papers)} papers")
-    for i, paper in enumerate(papers[:5], 1):  # Show first 5
+    for i, paper in enumerate(papers[:2], 1):  # Show first 2 to speed up tests
         logger.info(f"  {i}. {paper.title[:80]}...")
         logger.info(f"     ID: {paper.paper_id}, Authors: {paper.authors[:50] if paper.authors else 'N/A'}...")
 
@@ -60,14 +60,14 @@ def test_fetch_papers():
         from daily_paper.downloaders.arxiv_downloader import ArxivDownloader
         downloader = ArxivDownloader(
             categories=config.arxiv.categories,
-            max_results=5
+            max_results=2
         )
 
         # Get the most recent papers regardless of date
         import arxiv as arxiv_lib
         search = arxiv_lib.Search(
             query=config.arxiv.build_query(),
-            max_results=5,
+            max_results=2,
             sort_by=arxiv_lib.SortCriterion.SubmittedDate,
             sort_order=arxiv_lib.SortOrder.Descending,
         )
@@ -154,7 +154,8 @@ def test_parse_pdf(paper):
 
     logger.info(f"Parsing PDF: {paper.pdf_path}")
 
-    result = parser.parse(paper.pdf_path)
+    # Parser now accepts Paper object directly
+    result = parser.parse(paper)
 
     if result.success:
         logger.info(f"✓ PDF parsed successfully")
@@ -196,13 +197,13 @@ def test_summarize_paper(paper):
 
     summarizer = PaperSummarizer(config)
 
-    # Test with a subset of steps
+    # Test with new 3-step workflow
     from daily_paper.summarizers.workflow import SummaryStep
 
     test_steps = [
-        SummaryStep.BASIC_INFO,
-        SummaryStep.BACKGROUND,
-        SummaryStep.CONTRIBUTIONS,
+        SummaryStep.CONTENT_SUMMARY,
+        SummaryStep.DEEP_RESEARCH,
+        SummaryStep.TLDR,
     ]
 
     logger.info(f"Running summarization steps: {[s.display_name for s in test_steps]}")

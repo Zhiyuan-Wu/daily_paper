@@ -20,6 +20,7 @@ class PaperResponse(BaseModel):
     url: str
     has_pdf: bool = False
     has_summary: bool = False
+    tldr: Optional[str] = None  # TLDR summary content
     interaction_status: Optional[str] = None  # 'interested', 'not_interested', None
     notes: Optional[str] = None  # User notes
 

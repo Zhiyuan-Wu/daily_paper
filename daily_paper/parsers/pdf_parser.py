@@ -67,6 +67,7 @@ class ParseResult:
         method: Extraction method used ('pymupdf' or 'ocr').
         success: Whether extraction was successful.
         error_message: Error message if extraction failed.
+        text_path: Path to saved text file (if auto_save=True).
     """
 
     text: str
@@ -75,6 +76,7 @@ class ParseResult:
     method: str = "pymupdf"
     success: bool = True
     error_message: Optional[str] = None
+    text_path: Optional[str] = None  # Path to saved text file
 
     def to_dict(self) -> dict:
         """Convert result to dictionary."""
@@ -98,8 +100,10 @@ class PDFParser:
 
     Typical usage:
         >>> parser = PDFParser(ocr_config)
-        >>> result = parser.parse("data/papers/paper.pdf")
+        >>> paper = Paper(pdf_path="data/papers/paper.pdf")
+        >>> result = parser.parse(paper)
         >>> print(result.text)
+        >>> print(f"Text saved to: {paper.text_path}")
         >>> for section in result.sections:
         ...     print(f"{section.title}: {section.content[:100]}...")
 
@@ -296,6 +300,38 @@ class PDFParser:
 
         return True
 
+    def _save_text_to_file(self, pdf_path: Path, result: ParseResult) -> ParseResult:
+        """
+        Save extracted text to a .txt file.
+
+        Creates a text file with the same name as the PDF in the same directory.
+        Updates the result's text_path field with the saved file path.
+
+        Args:
+            pdf_path: Path to the PDF file.
+            result: ParseResult containing extracted text.
+
+        Returns:
+            Updated ParseResult with text_path set.
+        """
+        try:
+            # Create text file path (same location as PDF, .txt extension)
+            text_path = pdf_path.with_suffix('.txt')
+            text_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Write text to file
+            text_path.write_text(result.text, encoding='utf-8')
+
+            # Update result with text path
+            result.text_path = str(text_path)
+            logger.info(f"Saved extracted text to {text_path}")
+
+        except Exception as e:
+            logger.warning(f"Failed to save text to file: {e}")
+            # Don't throw exception, continue with result but text_path remains None
+
+        return result
+
     def _extract_with_ocr(self, pdf_path: Path) -> ParseResult:
         """
         Extract text using OCR service.
@@ -396,7 +432,7 @@ class PDFParser:
         except Exception as e:
             raise IOError(f"OCR extraction failed: {e}")
 
-    def parse(self, pdf_path: str | Path) -> ParseResult:
+    def parse(self, paper, auto_save: bool = True) -> ParseResult:
         """
         Extract text from a PDF with automatic OCR fallback.
 
@@ -404,39 +440,99 @@ class PDFParser:
         is below thresholds, falls back to OCR service.
 
         Args:
-            pdf_path: Path to the PDF file.
+            paper: Paper object containing pdf_path. Will be modified to set text_path.
+            auto_save: If True, automatically save extracted text to .txt file.
 
         Returns:
             ParseResult containing extracted text and metadata.
         """
-        pdf_path = Path(pdf_path)
+        # Validate paper object
+        if not paper.pdf_path:
+            logger.warning(f"Paper {paper.id} has no pdf_path")
+            return ParseResult(
+                text="",
+                success=False,
+                error_message=f"Paper {paper.id} has no pdf_path",
+            )
+
+        pdf_path = Path(paper.pdf_path)
+        logger.info(f"Starting PDF parsing for paper {paper.id}: {pdf_path.name}")
+
+        # Validation 1: File existence
         if not pdf_path.exists():
+            logger.warning(f"PDF file not found: {pdf_path}")
             return ParseResult(
                 text="",
                 success=False,
                 error_message=f"PDF file not found: {pdf_path}",
             )
 
+        # Validation 2: File readability
+        if not os.access(pdf_path, os.R_OK):
+            logger.warning(f"PDF file not readable: {pdf_path}")
+            return ParseResult(
+                text="",
+                success=False,
+                error_message=f"PDF file not readable: {pdf_path}",
+            )
+
+        # Validation 3: File size (avoid empty or corrupted files)
+        file_size = pdf_path.stat().st_size
+        if file_size < 100:
+            logger.warning(f"PDF file too small ({file_size} bytes): {pdf_path}")
+            return ParseResult(
+                text="",
+                success=False,
+                error_message=f"PDF file too small: {pdf_path}",
+            )
+
         # Try PyMuPDF extraction first
         try:
+            logger.debug(f"Attempting PyMuPDF extraction for {pdf_path.name}")
             result = self._extract_with_pymupdf(pdf_path)
             if self._check_text_quality(result.text):
-                logger.info(f"PyMuPDF extraction successful for {pdf_path}")
+                logger.info(
+                    f"PyMuPDF extraction successful for paper {paper.id}: "
+                    f"{result.page_count} pages, {len(result.text)} chars"
+                )
+
+                # Auto-save text to file
+                if auto_save and result.success:
+                    result = self._save_text_to_file(pdf_path, result)
+                    # Directly set paper.text_path
+                    paper.text_path = result.text_path
+                    logger.debug(f"Set paper.text_path: {result.text_path}")
+
+                logger.info(f"PDF parsing complete: {paper.id} (PyMuPDF)")
                 return result
             else:
                 logger.warning(
-                    f"PyMuPDF extraction quality low for {pdf_path}, falling back to OCR"
+                    f"PyMuPDF extraction quality low for paper {paper.id} "
+                    f"({len(result.text)} chars), falling back to OCR"
                 )
         except Exception as e:
-            logger.warning(f"PyMuPDF extraction failed for {pdf_path}: {e}, falling back to OCR")
+            logger.warning(f"PyMuPDF extraction failed for paper {paper.id}: {e}, falling back to OCR")
 
         # Fall back to OCR
         try:
+            logger.info(f"Attempting OCR extraction for paper {paper.id}")
             result = self._extract_with_ocr(pdf_path)
-            logger.info(f"OCR extraction successful for {pdf_path}")
+
+            # Auto-save text to file
+            if auto_save and result.success:
+                result = self._save_text_to_file(pdf_path, result)
+                # Directly set paper.text_path
+                paper.text_path = result.text_path
+                logger.debug(f"Set paper.text_path: {result.text_path}")
+
+            logger.info(
+                f"OCR extraction successful for paper {paper.id}: "
+                f"{result.page_count} pages, {len(result.text)} chars"
+            )
+            logger.info(f"PDF parsing complete: {paper.id} (OCR)")
             return result
         except Exception as e:
-            logger.error(f"OCR extraction failed for {pdf_path}: {e}")
+            logger.error(f"OCR extraction failed for paper {paper.id}: {e}")
             return ParseResult(
                 text="",
                 success=False,
