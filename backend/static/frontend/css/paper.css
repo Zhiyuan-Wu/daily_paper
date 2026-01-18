@@ -1,0 +1,464 @@
+/**
+ * Paper-specific styles
+ *
+ * Custom styles for paper cards, grids, highlights, and other paper-related components.
+ */
+
+/* ==================== Paper Cards ==================== */
+
+.papers-list {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.paper-card {
+    background: var(--color-surface);
+    border-radius: 14px;
+    padding: 24px;
+    box-shadow: var(--shadow-soft);
+    border: 1px solid var(--color-border);
+    transition: var(--transition-base);
+}
+
+.paper-card:hover {
+    box-shadow: var(--shadow-hover);
+    transform: translateY(-2px);
+}
+
+.paper-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.paper-title {
+    margin: 0;
+    font-size: 1.2rem;
+    color: var(--color-text);
+    font-weight: 600;
+    flex: 1;
+}
+
+.paper-title-compact {
+    font-size: 1.1rem;
+    margin: 0 0 12px 0;
+    color: var(--color-text);
+    font-weight: 600;
+    /* Fix height to 3 lines */
+    height: 4.2em; /* 1.4 line-height * 3 lines */
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    line-height: 1.4;
+}
+
+.paper-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.action-btn {
+    padding: 8px 12px;
+    background: var(--color-surface-alt);
+    border: 1px solid var(--color-border);
+    border-radius: 8px;
+    color: var(--color-muted);
+    cursor: pointer;
+    transition: var(--transition-base);
+}
+
+.action-btn:hover {
+    background: var(--color-primary);
+    color: white;
+    border-color: var(--color-primary);
+}
+
+/* Active state for interested/not-interested buttons */
+.action-btn.btn-active-success {
+    background: var(--color-success);
+    color: white;
+    border-color: var(--color-success);
+}
+
+.action-btn.btn-active-success:hover {
+    background: #1a6b48;
+    border-color: #1a6b48;
+}
+
+.action-btn.btn-active-danger {
+    background: var(--color-error);
+    color: white;
+    border-color: var(--color-error);
+}
+
+.action-btn.btn-active-danger:hover {
+    background: #a32f2f;
+    border-color: #a32f2f;
+}
+
+.paper-meta {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 12px;
+    color: var(--color-muted);
+    font-size: 0.9rem;
+    flex-wrap: wrap;
+}
+
+.paper-meta-compact {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 12px;
+    font-size: 0.85rem;
+    color: var(--color-muted);
+    flex-wrap: wrap;
+}
+
+.paper-source {
+    background: var(--color-surface-muted);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-weight: 500;
+    font-size: 0.85rem;
+}
+
+.paper-authors {
+    color: var(--color-text-secondary);
+}
+
+.paper-abstract {
+    color: var(--color-text);
+    line-height: 1.6;
+    margin: 0;
+}
+
+.paper-abstract-compact {
+    font-size: 0.95rem;
+    margin: 0 0 16px 0;
+    line-height: 1.5;
+    color: var(--color-text-secondary);
+}
+
+.paper-summary-preview {
+    margin-top: 16px;
+    padding: 12px;
+    background: var(--color-surface-alt);
+    border-radius: 8px;
+    color: var(--color-primary);
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.paper-card-actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* ==================== Highlights Card ==================== */
+
+.highlights-card {
+    /* Inherits base .card styles - no special gradient needed */
+}
+
+.highlights-content {
+    line-height: 1.8;
+}
+
+.highlights-content h2 {
+    color: var(--color-text);
+    margin-bottom: 16px;
+    font-size: 1.1rem;
+}
+
+.highlights-content h3 {
+    margin-top: 20px;
+    margin-bottom: 12px;
+    color: var(--color-text);
+    font-size: 1rem;
+}
+
+.highlights-content ul {
+    padding-left: 24px;
+}
+
+.highlights-content li {
+    margin-bottom: 12px;
+}
+
+.highlights-content strong {
+    color: var(--color-text);
+    font-weight: 600;
+}
+
+/* ==================== Themes ==================== */
+
+.themes-content {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+/* ==================== Papers Grid ==================== */
+
+.papers-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+    gap: 20px;
+    margin-bottom: 24px;
+}
+
+/* ==================== Status Badges ==================== */
+
+.status-interested {
+    background: #e8f5e9;
+    color: #2e7d32;
+    border: 1px solid #81c784;
+}
+
+.status-not-interested {
+    background: #ffebee;
+    color: #c62828;
+    border: 1px solid #ef5350;
+}
+
+/* ==================== Pagination ==================== */
+
+.pagination-container {
+    margin-top: 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+}
+
+.pagination {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.pagination-ellipsis {
+    color: var(--color-muted);
+    padding: 0 8px;
+}
+
+.pagination-info {
+    color: var(--color-muted);
+    font-size: 0.9rem;
+}
+
+/* ==================== Filter Section ==================== */
+
+.filter-section {
+    margin-bottom: 24px;
+}
+
+.filter-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+}
+
+/* ==================== Paper Detail Modal ==================== */
+
+.paper-detail {
+    max-width: 800px;
+}
+
+.paper-detail h2 {
+    margin-bottom: 20px;
+    color: var(--color-text);
+}
+
+.paper-meta-full {
+    margin-bottom: 20px;
+    padding: 16px;
+    background: var(--color-surface-alt);
+    border-radius: 8px;
+}
+
+.paper-meta-full p {
+    margin: 8px 0;
+}
+
+.paper-abstract-full {
+    margin-bottom: 24px;
+}
+
+.paper-abstract-full h3 {
+    margin-bottom: 12px;
+    color: var(--color-text);
+}
+
+.paper-summaries {
+    margin-bottom: 24px;
+}
+
+.paper-summaries h3 {
+    margin-bottom: 20px;
+    color: var(--color-text);
+}
+
+.summary-section {
+    margin-bottom: 24px;
+    padding: 20px;
+    background: var(--color-surface-alt);
+    border-radius: 8px;
+}
+
+.summary-section h4 {
+    margin-bottom: 12px;
+    color: var(--color-primary);
+}
+
+.summary-content {
+    line-height: 1.8;
+}
+
+.summary-content h1,
+.summary-content h2,
+.summary-content h3 {
+    margin-top: 16px;
+    margin-bottom: 8px;
+}
+
+.summary-content ul,
+.summary-content ol {
+    padding-left: 24px;
+}
+
+.summary-content li {
+    margin-bottom: 8px;
+}
+
+.summary-content code {
+    background: var(--color-surface);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+}
+
+.summary-content pre {
+    background: var(--color-surface);
+    padding: 12px;
+    border-radius: 8px;
+    overflow-x: auto;
+}
+
+.modal-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 24px;
+}
+
+.modal-actions a {
+    text-decoration: none;
+}
+
+/* ==================== Empty State ==================== */
+
+.empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--color-muted);
+}
+
+.empty-state i {
+    font-size: 3rem;
+    margin-bottom: 16px;
+    opacity: 0.5;
+}
+
+.empty-state p {
+    font-size: 1.1rem;
+    margin-bottom: 24px;
+}
+
+/* ==================== Date Input ==================== */
+
+.date-input {
+    padding: 10px 15px;
+    border: 1px solid var(--color-border);
+    border-radius: 10px;
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-size: 1rem;
+}
+
+/* ==================== Page Header ==================== */
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.page-header h1 {
+    margin: 0;
+}
+
+.page-actions {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+/* ==================== Responsive ==================== */
+
+@media (max-width: 768px) {
+    .papers-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .paper-card-header {
+        flex-direction: column;
+    }
+
+    .paper-actions {
+        width: 100%;
+        justify-content: flex-end;
+    }
+
+    .paper-meta {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .page-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .page-actions {
+        width: 100%;
+        flex-direction: column;
+    }
+
+    .filter-row {
+        grid-template-columns: 1fr;
+    }
+
+    .paper-detail {
+        max-width: 100%;
+    }
+
+    .modal-actions {
+        flex-direction: column;
+    }
+
+    .modal-actions button,
+    .modal-actions a {
+        width: 100%;
+    }
+}

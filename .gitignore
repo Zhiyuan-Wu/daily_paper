@@ -1,0 +1,8 @@
+.claude
+.pytest_cache
+.env
+.venv
+data/*
+__pycache__/
+doc
+.python-version

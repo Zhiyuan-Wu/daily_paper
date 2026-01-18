@@ -1,0 +1,584 @@
+/**
+ * mobile.css - 移动端专用样式
+ * 包含移动端断点样式：顶部导航栏、抽屉式侧边栏、表格转卡片、筛选区域等
+ */
+
+/* ==================== 移动端断点 ==================== */
+@media (max-width: 768px) {
+    /* ==================== 顶部导航栏 ==================== */
+    .mobile-header {
+        display: flex !important;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 56px;
+        background: var(--color-surface);
+        border-bottom: 1px solid var(--color-border);
+        z-index: 100;
+        padding: 0 16px;
+        align-items: center;
+        justify-content: space-between;
+    }
+
+    .hamburger-btn {
+        background: transparent;
+        border: none;
+        font-size: 1.4rem;
+        color: var(--color-text);
+        cursor: pointer;
+        padding: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .mobile-title {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: var(--color-text);
+        margin: 0;
+    }
+
+    .mobile-header-actions {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+    }
+
+    .mobile-cart-btn {
+        background: transparent;
+        border: none;
+        font-size: 1.2rem;
+        color: var(--color-text);
+        cursor: pointer;
+        padding: 8px;
+        position: relative;
+    }
+
+    /* ==================== 侧边栏改为抽屉式 ==================== */
+    .sidebar {
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+        z-index: 200;
+    }
+
+    .sidebar.open {
+        transform: translateX(0);
+    }
+
+    /* ==================== 遮罩层 ==================== */
+    .sidebar-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.5);
+        z-index: 150;
+    }
+
+    .sidebar-overlay.show {
+        display: block;
+    }
+
+    /* ==================== 主内容区 ==================== */
+    .main-content {
+        margin-left: 0;
+        padding-top: 66px; /* 避开顶部导航 */
+        padding-bottom: 70px; /* 避开底部导航 */
+        padding-left: 16px;
+        padding-right: 16px;
+    }
+
+    /* ==================== 表格转换为卡片 - 仅显示关键信息 ==================== */
+    .data-table thead {
+        display: none;
+    }
+
+    .data-table tbody tr {
+        display: block;
+        border: 1px solid var(--color-border);
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 12px;
+        background: var(--color-surface);
+        cursor: pointer; /* 点击查看详情 */
+        transition: var(--transition-base);
+    }
+
+    .data-table tbody tr:hover {
+        box-shadow: var(--shadow-hover);
+        transform: translateY(-2px);
+        border-color: rgba(20, 118, 255, 0.25);
+    }
+
+    /* 默认隐藏所有列 */
+    .data-table td {
+        display: none;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--color-border);
+        font-size: 0.9rem;
+    }
+
+    .data-table td:last-child {
+        border-bottom: none;
+    }
+
+    /* 仅显示关键列 */
+    .data-table td[data-label="操作"],
+    .data-table td[data-label="商品名"],
+    .data-table td[data-label="含税价格"],
+    .data-table td[data-label="供应商"],
+    .data-table td[data-label="订单号"],
+    .data-table td[data-label="用户"],
+    .data-table td[data-label="状态"],
+    .data-table td[data-label="ID"],
+    .data-table td[data-label="用户名"],
+    .data-table td[data-label="用户类型"],
+    .data-table td[data-label="创建时间"] {
+        display: flex;
+        justify-content: space-between;
+    }
+
+    .data-table td::before {
+        content: attr(data-label);
+        font-weight: 600;
+        color: var(--color-muted);
+        flex: 0 0 100px;
+    }
+
+    /* ==================== 筛选区域 - 基础筛选常驻，高级筛选折叠 ==================== */
+    .filter-section {
+        position: relative;
+    }
+
+    .filter-row {
+        grid-template-columns: 1fr;
+    }
+
+    .filter-row.basic-filters {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .filter-row.advanced-filters {
+        display: none;
+        grid-template-columns: 1fr;
+        gap: 12px;
+        margin-top: 12px;
+        padding-top: 12px;
+        border-top: 1px solid var(--color-border);
+    }
+
+    .filter-row.advanced-filters.show {
+        display: grid;
+    }
+
+    .filter-toggle-btn {
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        width: 100%;
+        padding: 10px;
+        margin-top: 12px;
+        background: var(--color-surface-muted);
+        border: 1px solid var(--color-border);
+        border-radius: 8px;
+        color: var(--color-muted);
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: var(--transition-base);
+    }
+
+    .filter-toggle-btn:hover {
+        background: rgba(20, 118, 255, 0.08);
+        border-color: rgba(20, 118, 255, 0.35);
+    }
+
+    .filter-toggle-btn i {
+        transition: transform 0.3s ease;
+    }
+
+    .filter-toggle-btn.expanded i {
+        transform: rotate(180deg);
+    }
+
+    /* ==================== 模态框全屏 - 使用更强的样式优先级 ==================== */
+    .modal {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 100vh !important;
+        display: flex !important;
+        align-items: flex-start !important;
+        justify-content: center !important;
+        padding: 0 !important;
+        z-index: 1000 !important;
+    }
+
+    .modal-content {
+        width: 100% !important;
+        height: 100vh !important;
+        max-height: 100vh !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        overflow: hidden !important;
+    }
+
+    .modal-header {
+        padding: 16px 20px;
+        flex-shrink: 0;
+        border-bottom: 1px solid var(--color-border);
+    }
+
+    .modal-body {
+        flex: 1 !important;
+        overflow-y: auto !important;
+        padding: 20px !important;
+        max-height: none !important;
+        height: auto !important;
+    }
+
+    .modal-footer {
+        padding: 16px 20px;
+        flex-shrink: 0;
+        border-top: 1px solid var(--color-border);
+    }
+
+    /* 购物车特定样式 - 确保保存按钮区域在底部 */
+    #cartModal .form-actions {
+        position: sticky !important;
+        bottom: 0 !important;
+        background: var(--color-surface) !important;
+        padding: 16px 0 !important;
+        margin-top: 20px !important;
+        flex-shrink: 0 !important;
+    }
+
+    /* ==================== 底部Tab导航 ==================== */
+    .mobile-bottom-nav {
+        display: flex !important;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 60px;
+        background: var(--color-surface);
+        border-top: 1px solid var(--color-border);
+        z-index: 100;
+        box-shadow: 0 -2px 10px rgba(15, 23, 42, 0.1);
+    }
+
+    .mobile-bottom-nav .nav-item {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        font-size: 0.75rem;
+        color: var(--color-muted);
+        text-decoration: none;
+        cursor: pointer;
+        transition: var(--transition-base);
+        padding: 8px 0;
+    }
+
+    .mobile-bottom-nav .nav-item i {
+        font-size: 1.2rem;
+    }
+
+    .mobile-bottom-nav .nav-item.active {
+        color: var(--color-primary);
+    }
+
+    /* ==================== 模态框内的表格保持原样，不转换为卡片 ==================== */
+    .modal-body .data-table thead {
+        display: table-header-group;
+    }
+
+    .modal-body .data-table tbody tr {
+        display: table-row;
+        border: none;
+        padding: 0;
+        margin: 0;
+        background: transparent;
+    }
+
+    .modal-body .data-table tbody tr:hover {
+        background: rgba(20, 118, 255, 0.04);
+    }
+
+    .modal-body .data-table td {
+        display: table-cell;
+        border-bottom: 1px solid var(--color-border);
+        padding: 14px 16px;
+    }
+
+    .modal-body .data-table td::before {
+        content: none;
+    }
+
+    /* ==================== 空状态行不转换为卡片 ==================== */
+    .data-table tbody tr:has(td[colspan]) {
+        display: table-row;
+        border: none;
+        padding: 40px;
+        background: transparent !important;
+    }
+
+    .data-table tbody tr:has(td[colspan]) td {
+        display: table-cell;
+        border: none;
+        text-align: center;
+    }
+
+    .data-table tbody tr:has(td[colspan]) td::before {
+        content: none;
+    }
+
+    /* ==================== 购物车卡片式布局 ==================== */
+    .cart-items-mobile {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .cart-item-card {
+        background: var(--color-surface-muted);
+        border: 1px solid var(--color-border);
+        border-radius: 12px;
+        padding: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .cart-item-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .cart-item-name {
+        font-weight: 600;
+        color: var(--color-text);
+        flex: 1;
+    }
+
+    .cart-item-details {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .cart-item-detail {
+        font-size: 0.85rem;
+        color: var(--color-muted);
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .cart-item-detail i {
+        font-size: 0.75rem;
+    }
+
+    .cart-item-price {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        padding: 8px 0;
+    }
+
+    .price-internal,
+    .price-tax {
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+
+    .price-internal {
+        color: var(--color-muted);
+    }
+
+    .price-tax {
+        color: var(--color-primary);
+    }
+
+    .cart-item-quantity {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .qty-btn {
+        width: 32px;
+        height: 32px;
+        border: 1px solid var(--color-border);
+        border-radius: 8px;
+        background: var(--color-surface);
+        color: var(--color-text);
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+        transition: var(--transition-base);
+    }
+
+    .qty-btn:hover {
+        background: rgba(20, 118, 255, 0.1);
+        border-color: var(--color-primary);
+        color: var(--color-primary);
+    }
+
+    .qty-input {
+        width: 60px;
+        padding: 8px;
+        border: 1px solid var(--color-border);
+        border-radius: 8px;
+        text-align: center;
+        font-size: 1rem;
+        background: var(--color-surface-muted);
+    }
+
+    .qty-input:focus {
+        outline: none;
+        border-color: var(--color-primary);
+        box-shadow: 0 0 0 3px rgba(20, 118, 255, 0.12);
+    }
+
+    /* ==================== 统计信息卡片行样式 ==================== */
+    .stat-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 6px 0;
+    }
+
+    .stat-label {
+        font-size: 0.9rem;
+        color: var(--color-muted);
+        flex: 1;
+    }
+
+    .stat-value {
+        font-size: 0.9rem;
+        color: var(--color-text);
+        font-weight: 500;
+        text-align: right;
+    }
+
+    /* ==================== 购物车表格行移动端样式 ==================== */
+    .cart-item-row {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
+
+    .cart-item-row > * {
+        padding: 4px 0;
+    }
+
+    /* ==================== 表单响应式 ==================== */
+    .form-actions {
+        flex-direction: column;
+    }
+
+    .form-actions .btn {
+        width: 100%;
+    }
+
+    /* ==================== 按钮响应式 ==================== */
+    .btn {
+        width: 100%;
+        justify-content: center;
+    }
+
+    .page-actions {
+        flex-direction: column;
+        width: 100%;
+    }
+
+    .page-actions .btn {
+        width: 100%;
+    }
+
+    /* ==================== 分页响应式 ==================== */
+    .pagination {
+        flex-wrap: wrap;
+        padding: 16px;
+    }
+
+    .pagination-info {
+        width: 100%;
+        text-align: center;
+        margin: 8px 0;
+    }
+
+    .pagination button {
+        flex: 1;
+        min-width: 80px;
+    }
+
+    /* ==================== 页面标题响应式 ==================== */
+    .page-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .page-header h1 {
+        font-size: 1.4rem;
+    }
+
+    /* ==================== 操作按钮响应式 ==================== */
+    .action-buttons {
+        flex-wrap: wrap;
+    }
+
+    .action-btn {
+        width: 36px;
+        height: 36px;
+        font-size: 1rem;
+    }
+
+    /* ==================== 状态标签响应式 ==================== */
+    .tag-item {
+        font-size: 0.75rem;
+        padding: 3px 10px;
+    }
+
+    /* ==================== 单选按钮响应式 ==================== */
+    .radio-item {
+        padding: 12px 16px;
+        min-width: 100px;
+    }
+
+    .visibility-selector {
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    /* ==================== 消息提示响应式 ==================== */
+    .message {
+        left: 10px;
+        right: 10px;
+        top: 70px;
+        max-width: none;
+    }
+}
+
+/* ==================== 移动端专用样式类（默认隐藏） ==================== */
+.mobile-header,
+.mobile-bottom-nav,
+.filter-toggle-btn {
+    display: none;
+}

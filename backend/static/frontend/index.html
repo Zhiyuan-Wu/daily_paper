@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>每日论文推荐系统</title>
+    <link rel="stylesheet" href="/static/css/base.css">
+    <link rel="stylesheet" href="/static/css/pc.css">
+    <link rel="stylesheet" href="/static/css/mobile.css">
+    <link rel="stylesheet" href="/static/css/paper.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+    <!-- Sidebar (PC) -->
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h3><i class="fas fa-newspaper"></i> 每日论文</h3>
+        </div>
+        <div class="sidebar-nav">
+            <div class="sidebar-nav-item active" data-page="daily-report">
+                <i class="fas fa-calendar-day"></i>
+                <span>今日日报</span>
+            </div>
+            <div class="sidebar-nav-item" data-page="paper-explorer">
+                <i class="fas fa-search"></i>
+                <span>探索论文</span>
+            </div>
+            <div class="sidebar-nav-item" data-page="settings">
+                <i class="fas fa-cog"></i>
+                <span>我的设置</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Mobile header -->
+    <header class="mobile-header" style="display: none;">
+        <button class="hamburger-btn" id="hamburgerBtn">
+            <i class="fas fa-bars"></i>
+        </button>
+        <h1 class="mobile-title">每日论文</h1>
+    </header>
+
+    <!-- Mobile bottom nav -->
+    <nav class="mobile-bottom-nav" style="display: none;">
+        <div class="nav-item" data-page="daily-report">
+            <i class="fas fa-calendar-day"></i>
+            <span>日报</span>
+        </div>
+        <div class="nav-item" data-page="paper-explorer">
+            <i class="fas fa-search"></i>
+            <span>探索</span>
+        </div>
+        <div class="nav-item" data-page="settings">
+            <i class="fas fa-cog"></i>
+            <span>设置</span>
+        </div>
+    </nav>
+
+    <!-- Main content -->
+    <div class="main-content">
+        <!-- Daily Report Page -->
+        <div id="daily-report-page" class="page-content active">
+            <div class="page-header">
+                <h1><i class="fas fa-calendar-day"></i> 今日日报</h1>
+                <div class="page-actions">
+                    <input type="date" id="reportDateSelector" class="date-input">
+                    <button class="btn btn-primary" id="generateReportBtn">
+                        <i class="fas fa-magic"></i> 生成日报
+                    </button>
+                </div>
+            </div>
+
+            <!-- Themes section -->
+            <div class="card" id="themesCard" style="display: none;">
+                <h2><i class="fas fa-tags"></i> 推荐主题</h2>
+                <div id="themesContent" class="themes-content"></div>
+            </div>
+
+            <!-- Highlights section -->
+            <div class="card highlights-card" id="highlightsCard" style="display: none;">
+                <h2><i class="fas fa-lightbulb"></i> AI 生成亮点</h2>
+                <div id="highlightsContent" class="highlights-content"></div>
+            </div>
+
+            <!-- Paper list -->
+            <div id="reportPapersList" class="papers-list"></div>
+        </div>
+
+        <!-- Paper Explorer Page -->
+        <div id="paper-explorer-page" class="page-content" style="display: none;">
+            <div class="page-header">
+                <h1><i class="fas fa-search"></i> 探索论文</h1>
+                <button class="btn btn-success" id="fetchPapersBtn" onclick="fetchNewPapers()">
+                    <i class="fas fa-download"></i> 获取新论文
+                </button>
+            </div>
+
+            <!-- Filters -->
+            <div class="card filter-section">
+                <div class="filter-row">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label>搜索关键词</label>
+                        <input type="text" id="searchKeyword" placeholder="标题、作者、摘要">
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label>来源</label>
+                        <select id="filterSource">
+                            <option value="">全部</option>
+                            <option value="arxiv">arXiv</option>
+                            <option value="huggingface">Hugging Face</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label>状态</label>
+                        <select id="filterInteraction">
+                            <option value="">全部</option>
+                            <option value="interested">感兴趣</option>
+                            <option value="not_interested">不感兴趣</option>
+                            <option value="no_action">未标记</option>
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0; display: flex; align-items: flex-end; gap: 10px;">
+                        <button class="btn btn-primary" id="searchPapersBtn">
+                            <i class="fas fa-search"></i> 搜索
+                        </button>
+                        <button class="btn btn-secondary" id="resetFiltersBtn">
+                            <i class="fas fa-redo"></i> 重置
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results -->
+            <div id="papersGrid" class="papers-grid"></div>
+            <div id="papersPagination" class="pagination-container"></div>
+        </div>
+
+        <!-- Settings Page -->
+        <div id="settings-page" class="page-content" style="display: none;">
+            <div class="page-header">
+                <h1><i class="fas fa-cog"></i> 我的设置</h1>
+            </div>
+
+            <!-- Interests -->
+            <div class="card">
+                <h2><i class="fas fa-heart"></i> 研究兴趣</h2>
+                <form id="interestsForm">
+                    <div class="form-group">
+                        <label><i class="fas fa-key"></i> 感兴趣的关键词</label>
+                        <textarea name="interested_keywords" placeholder="例如：transformer, attention mechanism, NLP"></textarea>
+                        <small class="form-help">逗号分隔，用于推荐系统</small>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-ban"></i> 不感兴趣的关键词</label>
+                        <textarea name="disinterested_keywords" placeholder="例如：image classification, CNN"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-align-left"></i> 兴趣描述</label>
+                        <textarea name="interest_description" placeholder="描述你的研究方向..."></textarea>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> 保存
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Paper Sources -->
+            <div class="card">
+                <h2><i class="fas fa-download"></i> 论文来源</h2>
+                <form id="sourcesForm">
+                    <div class="form-group">
+                        <label><i class="fas fa-book"></i> arXiv 分类</label>
+                        <input type="text" name="arxiv_categories" placeholder="cs.AI,cs.LG,cs.CL">
+                        <small class="form-help">逗号分隔</small>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-list-ol"></i> 每日最大获取数</label>
+                        <input type="number" name="max_results" value="30" min="1" max="100">
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> 保存
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- AI Service -->
+            <div class="card">
+                <h2><i class="fas fa-robot"></i> AI 服务配置</h2>
+                <form id="aiConfigForm">
+                    <div class="form-group">
+                        <label><i class="fas fa-server"></i> LLM Provider</label>
+                        <select name="llm_provider">
+                            <option value="openai">OpenAI</option>
+                            <option value="azure">Azure OpenAI</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-brain"></i> 模型</label>
+                        <input type="text" name="openai_model" placeholder="gpt-4">
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> 保存
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Recommendation Config -->
+            <div class="card">
+                <h2><i class="fas fa-sliders-h"></i> 推荐配置</h2>
+                <form id="recommendationConfigForm">
+                    <div class="form-group">
+                        <label><i class="fas fa-cogs"></i> 推荐策略</label>
+                        <input type="text" name="recommend_strategies" placeholder="keyword_semantic,interested_semantic,llm_themes">
+                        <small class="form-help">逗号分隔的策略列表</small>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-list-ol"></i> 推荐数量</label>
+                        <input type="number" name="recommend_top_k" value="10" min="1" max="50">
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-signal"></i> 最小相似度</label>
+                        <input type="number" name="recommend_min_similarity" value="0.5" min="0" max="1" step="0.1">
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> 保存
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Auto Refresh Config -->
+            <div class="card">
+                <h2><i class="fas fa-sync-alt"></i> 自动刷新</h2>
+                <form id="autoRefreshForm">
+                    <div class="form-group">
+                        <label><i class="fas fa-toggle-on"></i> 启用自动刷新</label>
+                        <div class="toggle-switch">
+                            <input type="checkbox" id="autoRefreshEnabled" name="enabled">
+                            <label for="autoRefreshEnabled" class="toggle-label"></label>
+                            <span id="autoRefreshStatusText" class="toggle-status">禁用</span>
+                        </div>
+                        <small class="form-help">启用后将定期自动获取新论文</small>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-clock"></i> 刷新间隔（小时）</label>
+                        <input type="number" id="autoRefreshInterval" name="interval_hours" value="24" min="1" max="168">
+                        <small class="form-help">建议间隔：24小时（每日）</small>
+                    </div>
+                    <div class="form-group" id="lastRunInfo" style="display: none;">
+                        <label><i class="fas fa-history"></i> 运行历史</label>
+                        <p>上次运行: <span id="lastRunTime">-</span></p>
+                        <p>下次运行: <span id="nextRunTime">-</span></p>
+                    </div>
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> 保存配置
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal container -->
+    <div id="modalContainer"></div>
+
+    <!-- Message toast -->
+    <div id="message" class="message hidden"></div>
+
+    <!-- Scripts -->
+    <script src="/static/js/utils.js"></script>
+    <script src="/static/js/api.js"></script>
+    <script src="/static/js/main.js"></script>
+    <script src="/static/js/daily-report.js"></script>
+    <script src="/static/js/paper-explorer.js"></script>
+    <script src="/static/js/settings.js"></script>
+</body>
+</html>

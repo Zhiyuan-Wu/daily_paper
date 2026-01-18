@@ -1,0 +1,315 @@
+/**
+ * pc.css - PC端专用样式
+ * 包含侧边栏固定布局、表格正常显示、多列筛选布局、悬停效果等
+ */
+
+/* ==================== 侧边栏固定布局 ==================== */
+.sidebar {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 260px;
+    height: 100vh;
+    background: var(--color-surface);
+    border-right: 1px solid var(--color-border);
+    display: flex;
+    flex-direction: column;
+    z-index: 100;
+    box-shadow: 2px 0 10px rgba(15, 23, 42, 0.05);
+}
+
+.sidebar-header {
+    padding: 24px 20px;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.sidebar-header h3 {
+    margin: 0;
+    font-size: 1.3rem;
+    color: var(--color-text);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.sidebar-header h3 i {
+    color: var(--color-primary);
+}
+
+.sidebar-nav {
+    flex: 1;
+    padding: 20px 0;
+    overflow-y: auto;
+}
+
+.sidebar-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    color: var(--color-muted);
+    text-decoration: none;
+    transition: var(--transition-base);
+    cursor: pointer;
+    border-left: 3px solid transparent;
+    min-height: 48px;
+    box-sizing: border-box;
+}
+
+.sidebar-nav-item:hover {
+    background: rgba(20, 118, 255, 0.06);
+    color: var(--color-primary);
+    border-left-color: var(--color-primary);
+}
+
+.sidebar-nav-item.active {
+    background: rgba(20, 118, 255, 0.1);
+    color: var(--color-primary-dark);
+    font-weight: 600;
+    border-left-color: var(--color-primary);
+}
+
+.sidebar-nav-item i {
+    width: 20px;
+    text-align: center;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+
+.sidebar-nav-item span {
+    flex: 1;
+    line-height: 1.5;
+}
+
+.sidebar-footer {
+    padding: 20px;
+    border-top: 1px solid var(--color-border);
+    background: var(--color-surface-alt);
+}
+
+.sidebar-user {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.sidebar-user-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--color-primary), var(--color-primary-dark));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
+.sidebar-user-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.sidebar-user-name {
+    font-weight: 600;
+    color: var(--color-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.sidebar-user-type {
+    font-size: 0.85rem;
+    color: var(--color-muted);
+}
+
+.sidebar-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.sidebar-actions .btn {
+    flex: 1;
+    padding: 8px 12px;
+    font-size: 0.9rem;
+}
+
+/* ==================== 主内容区 ==================== */
+.main-content {
+    margin-left: 260px;
+    min-height: 100vh;
+    background: var(--color-surface-alt);
+    padding: 24px;
+}
+
+/* ==================== 多列筛选布局 ==================== */
+.filter-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.filter-row:last-child {
+    margin-bottom: 0;
+}
+
+/* ==================== 购物车按钮样式 ==================== */
+#cartBtn,
+.mobile-cart-btn {
+    position: relative;
+}
+
+.cart-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    background: #ffe4e0;
+    color: var(--color-error);
+    border-radius: 999px;
+    min-width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    padding: 0 6px;
+    box-shadow: 0 4px 10px rgba(194, 60, 60, 0.2);
+}
+
+/* ==================== 购物车分组样式 ==================== */
+.cart-group {
+    margin-bottom: 24px;
+    background: var(--color-surface);
+    border-radius: 14px;
+    padding: 20px;
+    box-shadow: var(--shadow-soft);
+    border: 1px solid var(--color-border);
+}
+
+.cart-group-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.cart-group-header h3 {
+    margin: 0;
+    font-size: 1.2rem;
+    color: var(--color-text);
+}
+
+.cart-group-header i {
+    color: var(--color-primary);
+}
+
+.cart-item-row {
+    display: grid;
+    grid-template-columns: 40px 40px 2fr 1fr 1fr 1fr 1fr 1fr;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--color-border);
+}
+
+.cart-item-row:last-child {
+    border-bottom: none;
+}
+
+.cart-item-row.muted {
+    opacity: 0.5;
+}
+
+.cart-item-row.muted .cart-item-name,
+.cart-item-row.muted .cart-item-model,
+.cart-item-row.muted .cart-item-spec {
+    text-decoration: line-through;
+}
+
+.cart-total-row {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 2px solid var(--color-border);
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    font-weight: 600;
+    color: var(--color-text);
+}
+
+.cart-total-text {
+    text-align: right;
+    color: var(--color-text);
+    font-size: 1.1rem;
+}
+
+/* ==================== 统计表格样式 ==================== */
+.stats-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--color-surface);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: var(--shadow-soft);
+    border: 1px solid var(--color-border);
+}
+
+.stats-table th {
+    background: var(--color-surface-muted);
+    padding: 14px 16px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--color-muted);
+    font-size: 0.9rem;
+    border-bottom: 2px solid var(--color-border);
+}
+
+.stats-table td {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text);
+    font-size: 0.95rem;
+}
+
+.stats-table tbody tr:hover {
+    background: rgba(20, 118, 255, 0.04);
+}
+
+.stats-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.stats-table tbody tr.total-row {
+    background: rgba(20, 118, 255, 0.08);
+    font-weight: 600;
+}
+
+.stats-table tbody tr.total-row td {
+    border-top: 2px solid var(--color-border);
+}
+
+/* ==================== 密码输入框样式 ==================== */
+.password-input {
+    -webkit-text-security: disc;
+    -moz-text-security: disc;
+    text-security: disc;
+}
+
+/* ==================== 可见范围选择器 ==================== */
+.visibility-selector {
+    display: flex;
+    gap: 15px;
+    margin-top: 10px;
+    flex-wrap: wrap;
+}
+
+.radio-item {
+    flex: 1;
+    min-width: 120px;
+}
