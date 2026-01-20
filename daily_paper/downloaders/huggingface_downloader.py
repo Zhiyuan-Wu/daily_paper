@@ -75,7 +75,7 @@ class HuggingFaceDownloader(BaseDownloader):
             request_timeout: Timeout for HTTP requests in seconds.
         """
         self.arxiv_client = arxiv_lib.Client(
-            page_size=100, delay_seconds=3.0, num_retries=3
+            page_size=100, delay_seconds=0.3, num_retries=3
         )
         self.request_timeout = request_timeout
 

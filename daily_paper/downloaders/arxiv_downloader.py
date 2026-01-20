@@ -65,7 +65,7 @@ class ArxivDownloader(BaseDownloader):
         self.categories = categories or ["cs.AI"]
         self.max_results = max_results
         self._client = arxiv_lib.Client(
-            page_size=100, delay_seconds=3.0, num_retries=3
+            page_size=100, delay_seconds=0.3, num_retries=3
         )
 
     @property
