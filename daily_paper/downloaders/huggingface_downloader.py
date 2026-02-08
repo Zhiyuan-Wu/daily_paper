@@ -20,6 +20,8 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import List, Optional
 from urllib.parse import urljoin
+import logging
+logger = logging.getLogger(__name__)
 
 import arxiv as arxiv_lib
 import requests

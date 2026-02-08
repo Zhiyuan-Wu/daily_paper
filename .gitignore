@@ -7,3 +7,4 @@ __pycache__/
 doc
 .python-version
 .DS_Store
+test_*

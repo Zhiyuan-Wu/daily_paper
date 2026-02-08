@@ -56,7 +56,12 @@ def _build_recommendation_context(db: Session) -> RecommendationContext:
     # Get user keywords from profile (user_id = 1)
     from daily_paper.database import UserProfile
     user_profile = db.query(UserProfile).filter(UserProfile.id == 1).first()
-    user_keywords = user_profile.interests if user_profile else []
+
+    # Parse interested keywords from comma-separated string
+    if user_profile and user_profile.interested_keywords:
+        user_keywords = [k.strip() for k in user_profile.interested_keywords.split(',') if k.strip()]
+    else:
+        user_keywords = []
 
     # Get recommendation counts and last recommended times
     interactions = db.query(PaperInteraction).all()
@@ -155,6 +160,10 @@ async def get_recommendations(
             context=context,
             top_k=top_k,
         )
+
+        # If no recommendations, return empty list
+        if not results:
+            return []
 
         # Get paper IDs
         paper_ids = [r.paper_id for r in results]

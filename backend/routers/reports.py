@@ -127,7 +127,12 @@ def _generate_report_task(
 
         # Get user keywords from profile
         user_profile = db.query(UserProfile).filter(UserProfile.id == 1).first()
-        user_keywords = user_profile.interests if user_profile else []
+
+        # Parse interested keywords from comma-separated string
+        if user_profile and user_profile.interested_keywords:
+            user_keywords = [k.strip() for k in user_profile.interested_keywords.split(',') if k.strip()]
+        else:
+            user_keywords = []
 
         # Get recommendation counts
         interactions = db.query(PaperInteraction).all()

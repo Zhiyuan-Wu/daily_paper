@@ -177,10 +177,11 @@ Format your response as:
 - Trend 2
 ..."""
 
-        user_prompt = f"""Interest themes used for selection:\n" \
-            f"{' '.join(f'- {t}' for t in themes)}\n\n" \
-            f"Recommended papers:\n\n" \
-            f"{'\n\n'.join(paper_summaries)}"""
+        # Prepare papers text for the prompt
+        themes_text = ' '.join(f'- {t}' for t in themes)
+        papers_text = '\n\n'.join(paper_summaries)
+
+        user_prompt = f"""Interest themes used for selection:\n{themes_text}\n\nRecommended papers:\n\n{papers_text}"""
 
         try:
             highlights = self.llm_client.chat_with_system(

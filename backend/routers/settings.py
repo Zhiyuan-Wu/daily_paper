@@ -59,9 +59,7 @@ async def get_all_settings():
                 "max_results": config.arxiv.max_results,
             },
             "ai": {
-                "llm_provider": config.llm.provider,
                 "api_base": config.llm.api_base,
-                "api_version": config.llm.api_version,
                 "model": config.llm.model,
                 # Don't return API key for security
             },
@@ -139,9 +137,7 @@ async def get_ai_config():
     try:
         config = Config.from_env()
         return {
-            "llm_provider": config.llm.provider,
             "api_base": config.llm.api_base,
-            "api_version": config.llm.api_version,
             "model": config.llm.model,
             # Don't return API key for security
         }
