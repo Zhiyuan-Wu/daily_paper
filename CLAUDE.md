@@ -4,167 +4,136 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Daily Paper System is a full-stack web application for automated research paper recommendation. It fetches papers from arXiv and HuggingFace, parses PDFs, generates AI-powered summaries, and provides personalized recommendations through a FastAPI backend with vanilla JavaScript frontend.
+Daily Paper is an automated research paper recommendation and summarization system. It fetches papers from arXiv and HuggingFace, generates LLM-based summaries, and provides personalized recommendations based on user interests.
 
 ## Development Commands
 
-### Starting the Server
-
+### Running the Application
 ```bash
-# Start the FastAPI backend server (preferred method)
+# Start the FastAPI server (serves both API and frontend at http://localhost:8000)
 ./start_server.sh
 
-# Or manually:
+# Or directly with uvicorn
 python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-The API will be available at:
-- API endpoints: http://localhost:8000/api/
-- API documentation: http://localhost:8000/docs
-- Frontend: http://localhost:8000/static/index.html
-
 ### Testing
-
 ```bash
 # Run all tests
-pytest tests/
+pytest
 
-# Run specific test file
-pytest tests/test_parser.py
-
-# Run with verbose output
-pytest -v tests/
+# Run specific test categories
+pytest -m integration  # Integration tests (require network access)
+pytest -m slow         # Slow-running tests
 ```
 
-### Dependencies
-
-```bash
-# Install dependencies (after activating virtual environment)
-pip install -r requirements.txt
-```
+### API Endpoints
+- `/api/papers/` - Paper CRUD operations
+- `/api/users/` - User profile management
+- `/api/recommendations/` - Get paper recommendations
+- `/api/reports/` - Daily reports
+- `/api/settings/` - Application settings
+- `/api/refresh/` - Refresh paper data
+- `/docs` - Interactive API documentation (Swagger UI)
 
 ## Architecture
 
-### Module Structure
+### Plugin-Based Components
 
-The project is divided into two main components:
+The system uses a plugin architecture for several core components:
 
-1. **`daily_paper/`** - Core library module containing:
-   - `config.py` - Centralized configuration using environment variables
-   - `manager.py` - DownloadManager orchestrating paper fetching from multiple sources
-   - `database/models.py` - SQLAlchemy ORM models (Paper, Summary, UserProfile, PaperInteraction, InterestTheme, DailyReport)
-   - `downloaders/` - Plugin architecture for paper sources (arXiv, HuggingFace)
-   - `parsers/` - PDF text extraction with PyMuPDF and OCR fallback
-   - `summarizers/` - LLM-based 7-step paper summarization workflow
-   - `embeddings/` - Ollama-based embedding generation
-   - `recommenders/` - Multi-strategy recommendation system with RRF fusion
-   - `reports/` - Daily report generation with AI highlights
-   - `users/` - User profile and interaction management
+**Downloaders** (`daily_paper/downloaders/`):
+- Base class: `BaseDownloader` with abstract methods `fetch_by_date()` and `download_paper()`
+- Implementations: `ArxivDownloader`, `HuggingFaceDownloader`
+- Returns: `PaperMetadata` namedtuples with paper details
 
-2. **`backend/`** - FastAPI web application:
-   - `main.py` - FastAPI app entry point with CORS and router registration
-   - `dependencies.py` - Dependency injection for database sessions
-   - `models/` - Pydantic models for API requests/responses
-   - `routers/` - API route handlers (papers, users, reports, recommendations, settings)
-   - `static/frontend/` - Vanilla JavaScript single-page application
+**Recommenders** (`daily_paper/recommenders/`):
+- Base class: `BaseRecommender` with abstract `recommend()` method
+- Strategies registered via `StrategyRegistry` (plugin pattern)
+- Available strategies:
+  - `keyword_filter` - Filter by user keywords
+  - `keyword_semantic` - Semantic similarity to keywords
+  - `interested_semantic` - Similarity to previously interested papers
+  - `llm_themes` - LLM-generated interest themes
+  - `disinterested_filter` - Filter out disinterested papers
+  - `repetition_filter` - Downweight repeated recommendations
+  - `fusion` - Combine multiple strategies using RRF (Reciprocal Rank Fusion)
 
-### Key Design Patterns
+**Parsers** (`daily_paper/parsers/`):
+- `PDFParser` - Extract text from PDFs with OCR fallback
+- Returns `ParseResult` namedtuple with `success`, `text`, `method`
 
-**Plugin Architecture (Downloaders):** New paper sources can be added by implementing `BaseDownloader` interface and registering with `DownloadManager.register_downloader()`.
+**Summarizers** (`daily_paper/summarizers/`):
+- `LLMClient` - Configurable OpenAI/Azure client
+- `PaperSummarizer` - Multi-step summarization workflow
+- Summary types: `detailed`, `tldr`, `highlights`
 
-**Strategy Pattern (LLM Provider):** Runtime selection between OpenAI and Azure OpenAI based on `LLM_PROVIDER` environment variable.
+### Database
 
-**Repository Pattern (Database):** SQLAlchemy ORM with relationship support between papers, summaries, user interactions, and recommendations.
+**Schema** (`daily_paper/database/models.py`):
+- `papers` - Paper metadata with unique constraint on (source, paper_id)
+- `summaries` - LLM summaries with different types
+- `user_profile` - Single-user profile (designed for personal use)
+- `paper_interactions` - Track user actions (interested/not_interested/no_action)
+- `interest_themes` - LLM-generated themes for recommendations
+- `daily_reports` - Generated daily reports
 
-### Configuration System
+Uses SQLAlchemy ORM with SQLite. All models use timezone-aware datetimes.
 
-All configuration is environment-based through `.env` file. The `Config` class (`daily_paper/config.py`) aggregates all sub-configurations:
-- `LLMConfig` - OpenAI/Azure OpenAI settings
-- `ArxivConfig` - arXiv categories and max results
-- `OCRConfig` - OCR service URL for PDF fallback
-- `DatabaseConfig` - SQLite database URL
-- `PathConfig` - Download and text extraction directories
-- `EmbeddingConfig` - Ollama embedding service settings
-- `RecommendationConfig` - Strategy selection and ranking parameters
-- `ReportConfig` - Daily report generation settings
+### Configuration
 
-### Database Schema
+Centralized in `daily_paper/config.py` using dataclasses. Load with `Config.from_env()`.
 
-- **papers** - Paper metadata with file references (pdf_path, text_path)
-- **summaries** - LLM summaries with different types (basic_info, methods, results, etc.)
-- **user_profile** - Single-user profile (id=1) with interests and preferences
-- **paper_interactions** - User actions on papers (interested/not_interested) with recommendation tracking
-- **interest_themes** - LLM-generated themes from interested papers, regenerated periodically
-- **daily_reports** - Generated reports with AI highlights and paper recommendations
+Key configs:
+- `LLMConfig` - OpenAI API key, model, endpoint
+- `ArxivConfig` - Categories, max results
+- `EmbeddingConfig` - Ollama-compatible embedding service for semantic similarity
+- `RecommendationConfig` - Strategy selection, RRF parameters, refresh intervals
+- `LogConfig` - Structured logging with file rotation
 
-### Recommendation System
+Environment variables are loaded from `.env` file via python-dotenv.
 
-The recommender uses 7 strategies with Reciprocal Rank Fusion (RRF):
-1. **Keyword semantic** (`keyword_semantic`) - Semantic similarity to user keywords
-2. **Interested semantic** (`interested_semantic`) - Similarity to previously interested papers
-3. **Theme-based** (`llm_themes`) - Matching to LLM-generated interest themes
-4. **Disinterested filter** (`disinterested_filter`) - Filter out disinterested keywords
-5. **Disinterested semantic** (`disinterested_semantic`) - Dissimilarity to disliked papers
-6. **Repetition filter** (`repetition_filter`) - Downweight frequently recommended papers
-7. **Fusion engine** (`fusion`) - RRF-based fusion of all strategies
+### Recommendation System Flow
 
-Strategies are registered in `recommenders/strategies/` and can be enabled/disabled via `RECOMMEND_STRATEGIES` env var.
+1. User keywords are parsed from `user_profile.interests` field
+2. Strategies are instantiated from enabled config via `StrategyRegistry`
+3. Each strategy produces ranked paper lists
+4. `fusion.py` combines results using Reciprocal Rank Fusion (RRF)
+5. Repetition filter downweights previously recommended papers
+6. Final ranked list returned
 
-### Async Operations
+### Logging
 
-Long-running operations (report generation, summarization) use background tasks with polling:
-1. Client initiates operation via POST endpoint
-2. Server returns task_id immediately
-3. Client polls `GET /api/reports/tasks/{task_id}` for status
-4. Task status transitions: pending → processing → completed/failed
+Logging is configured in `daily_paper/logging_config.py` and must be set up **before** any other imports (see `backend/main.py`). Uses structured logging with file rotation.
 
-## Important Implementation Notes
+### Import Patterns
 
-- **Single-user system**: User profile always has id=1, hardcoded in dependencies.py
-- **PDF parsing quality check**: Parser automatically falls back to OCR when PyMuPDF extraction is below threshold
-- **Deduplication**: Papers are uniquely identified by source + paper_id combination
-- **Frontend**: No build step required - vanilla JS with modular files in `backend/static/frontend/js/`
-- **CORS**: Currently allows all origins (`*`) - should be restricted in production
-- **File paths**: PDF and text files are stored locally, paths referenced in database
-- **Theme regeneration**: Interest themes are regenerated based on `theme_refresh_days` or `theme_refresh_papers` thresholds
+The project uses a `daily_paper` package for core logic:
+```python
+from daily_paper.config import Config
+from daily_paper.downloaders import ArxivDownloader
+from daily_paper.recommenders import StrategyRegistry
+```
 
-## Common Tasks
+FastAPI routers are in `backend/routers/` and import from `daily_paper` modules.
 
-### Adding a New Paper Source
+### Key Patterns
 
-1. Create new downloader in `daily_paper/downloaders/` inheriting from `BaseDownloader`
-2. Implement `get_papers_by_date()` and `download_paper()` methods
-3. Register in `DownloadManager._register_default_downloaders()`
-4. Add configuration to relevant Config class if needed
+**Factory Pattern**: Components like downloaders and recommenders are instantiated dynamically based on config.
 
-### Modifying Recommendation Strategies
+**Async/Await**: FastAPI routes use async functions. Database operations use SQLAlchemy sync sessions.
 
-Strategies are in `daily_paper/recommenders/strategies/`. Each strategy:
-- Inherits from `BaseRecommendationStrategy`
-- Implements `calculate_scores()` method
-- Registered in `recommenders/registry.py`
-- Enabled via `RECOMMEND_STRATEGIES` env variable
+**Type Hints**: Extensive use of type annotations throughout. Use `from __future__ import annotations` for forward references.
 
-### Adding New API Endpoints
+**NamedTuples**: Used for data transfer (e.g., `PaperMetadata`, `ParseResult`).
 
-1. Add route handler in `backend/routers/` (or create new router file)
-2. Create Pydantic models in `backend/models/` if needed
-3. Register router in `backend/main.py` with `app.include_router()`
+**Relationships**: SQLAlchemy models use proper relationships (e.g., `paper.summaries`, `summary.paper`).
 
-### Database Migrations
+## Important Notes
 
-The project uses SQLAlchemy `create_all()` for table creation. For schema changes:
-- Modify models in `daily_paper/database/models.py`
-- For production data migration, consider using Alembic
-- Local development can drop and recreate database at `DATABASE_URL`
-
-## Environment Setup
-
-Copy `.env.example` to `.env` and configure:
-- `DATABASE_URL` - SQLite database path (default: sqlite:///data/papers.db)
-- `LLM_PROVIDER` - "openai" or "azure"
-- `OPENAI_API_KEY` or `AZURE_OPENAI_API_KEY` - LLM access
-- `EMBEDDING_API_URL` - Ollama embedding service
-- `ARXIV_CATEGORIES` - Comma-separated arXiv categories
-- `OCR_SERVICE_URL` - Optional OCR fallback service
-- `RECOMMEND_STRATEGIES` - Enabled recommendation strategies
+- **Logging setup must happen first** in any main entry point before other imports
+- **Timezone-aware datetimes** are used throughout for all timestamp fields
+- **Unique paper constraint**: Papers are unique by (source, paper_id) combination
+- **Single-user design**: System is designed for one user, not multi-tenant
+- **Embedding service**: Uses local Ollama-compatible API (configurable via env)
+- **OCR fallback**: PDF parser falls back to OCR service when PyMuPDF fails
