@@ -148,22 +148,36 @@ class DownloadManager:
         self.session.refresh(paper)
         return paper
 
-    def fetch_papers_by_date(self, target_date: date, sources: Optional[List[str]] = None) -> List[Paper]:
+    def fetch_papers_by_date(
+        self,
+        target_date: Optional[date] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None,
+        sources: Optional[List[str]] = None
+    ) -> List[Paper]:
         """
-        Fetch papers for a specific date from configured sources.
+        Fetch papers for a date or date range from configured sources.
 
         Queries all registered downloaders (or specified sources) for
-        papers published on the target date. Creates database records
+        papers in the specified date range. Creates database records
         for new papers.
 
         Args:
-            target_date: Date to fetch papers for.
+            target_date: Single date to fetch (backward compatible).
+            start_date: Start of date range (inclusive).
+            end_date: End of date range (inclusive).
             sources: Optional list of source names to query. If None, queries all.
 
         Returns:
             List of Paper records (both newly created and existing).
         """
-        logger.info(f"Fetching papers for date {target_date} from sources: {sources or 'all'}")
+        # Determine date range
+        if target_date:
+            start_date = end_date = target_date
+        elif not (start_date and end_date):
+            raise ValueError("Must specify target_date OR both start_date and end_date")
+
+        logger.info(f"Fetching papers from {start_date} to {end_date} from sources: {sources or 'all'}")
 
         sources_to_query = sources or list(self.downloaders.keys())
         all_papers: List[Paper] = []
@@ -177,10 +191,13 @@ class DownloadManager:
                 continue
 
             try:
-                logger.info(f"Querying {source} for papers on {target_date}")
-                metadata_list = downloader.get_papers_by_date(target_date)
+                logger.info(f"Querying {source} for papers from {start_date} to {end_date}")
+                metadata_list = downloader.get_papers_by_date(
+                    start_date=start_date,
+                    end_date=end_date
+                )
                 logger.info(
-                    f"Found {len(metadata_list)} papers from {source} for {target_date}"
+                    f"Found {len(metadata_list)} papers from {source} for {start_date} to {end_date}"
                 )
 
                 for metadata in metadata_list:

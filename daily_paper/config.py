@@ -26,22 +26,17 @@ class LLMConfig:
     """
     Configuration for LLM provider.
 
-    Supports both OpenAI and Azure OpenAI providers with configurable
-    API keys, endpoints, and model/deployment settings.
+    Supports OpenAI API with configurable API key, endpoint, and model settings.
 
     Attributes:
-        provider: The LLM provider to use ('openai' or 'azure').
         api_key: The API key for authentication.
-        model: Model name (for OpenAI) or deployment name (for Azure).
+        model: Model name (e.g., 'gpt-4', 'gpt-3.5-turbo').
         api_base: Base URL for API requests.
-        api_version: API version (Azure only).
     """
 
-    provider: str = "openai"
     api_key: str = ""
     model: str = "gpt-4"
     api_base: str = "https://api.openai.com/v1"
-    api_version: str = "2024-02-01"
 
     @classmethod
     def from_env(cls) -> "LLMConfig":
@@ -53,26 +48,14 @@ class LLMConfig:
 
         Examples:
             >>> config = LLMConfig.from_env()
-            >>> config.provider
-            'openai'
+            >>> config.model
+            'gpt-4'
         """
-        provider = os.getenv("LLM_PROVIDER", "openai").lower()
-
-        if provider == "azure":
-            return cls(
-                provider=provider,
-                api_key=os.getenv("AZURE_OPENAI_API_KEY", ""),
-                model=os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4"),
-                api_base=os.getenv("AZURE_OPENAI_ENDPOINT", ""),
-                api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-02-01"),
-            )
-        else:
-            return cls(
-                provider=provider,
-                api_key=os.getenv("OPENAI_API_KEY", ""),
-                model=os.getenv("OPENAI_MODEL", "gpt-4"),
-                api_base=os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1"),
-            )
+        return cls(
+            api_key=os.getenv("OPENAI_API_KEY", ""),
+            model=os.getenv("OPENAI_MODEL", "gpt-4"),
+            api_base=os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1"),
+        )
 
 
 @dataclass
@@ -406,6 +389,40 @@ class ReportConfig:
 
 
 @dataclass
+class FetchConfig:
+    """
+    Configuration for paper fetching behavior.
+
+    Controls how papers are fetched from sources, including date range
+    behavior and minimum paper requirements.
+
+    Attributes:
+        lookback_days: Number of days to look back for papers (default: 7).
+        min_papers: Minimum number of papers to try to fetch. If fewer papers
+                   are found in the initial range, the range will be expanded.
+        skip_weekends: Whether to skip weekends when looking for papers.
+    """
+
+    lookback_days: int = 7
+    min_papers: int = 10
+    skip_weekends: bool = False
+
+    @classmethod
+    def from_env(cls) -> "FetchConfig":
+        """
+        Create FetchConfig from environment variables.
+
+        Returns:
+            A configured FetchConfig instance.
+        """
+        return cls(
+            lookback_days=int(os.getenv("FETCH_LOOKBACK_DAYS", "7")),
+            min_papers=int(os.getenv("FETCH_MIN_PAPERS", "10")),
+            skip_weekends=os.getenv("FETCH_SKIP_WEEKENDS", "false").lower() == "true",
+        )
+
+
+@dataclass
 class Config:
     """
     Main configuration container for the Daily Paper system.
@@ -423,6 +440,7 @@ class Config:
         embedding: Embedding service configuration.
         recommendation: Recommendation system configuration.
         report: Daily report generation configuration.
+        fetch: Paper fetching behavior configuration.
         log: Logging configuration.
     """
 
@@ -434,6 +452,7 @@ class Config:
     embedding: EmbeddingConfig = field(default_factory=EmbeddingConfig.from_env)
     recommendation: RecommendationConfig = field(default_factory=RecommendationConfig.from_env)
     report: ReportConfig = field(default_factory=ReportConfig.from_env)
+    fetch: FetchConfig = field(default_factory=FetchConfig.from_env)
     log: LogConfig = field(default_factory=LogConfig.from_env)
 
     @classmethod
@@ -449,8 +468,8 @@ class Config:
 
         Examples:
             >>> config = Config.from_env()
-            >>> config.llm.provider
-            'openai'
+            >>> config.llm.model
+            'gpt-4'
         """
         return cls(
             llm=LLMConfig.from_env(),
@@ -461,5 +480,6 @@ class Config:
             embedding=EmbeddingConfig.from_env(),
             recommendation=RecommendationConfig.from_env(),
             report=ReportConfig.from_env(),
+            fetch=FetchConfig.from_env(),
             log=LogConfig.from_env(),
         )

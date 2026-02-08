@@ -7,17 +7,16 @@ and AI-generated highlights.
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime
-from typing import List, Optional
-
-from sqlalchemy.orm import Session
+from typing import TYPE_CHECKING, List, Optional
 
 from daily_paper.config import Config
-from daily_paper.database import DailyReport, InterestTheme, Paper, PaperInteraction, Summary
 from daily_paper.recommenders.manager import RecommendationManager
 from daily_paper.summarizers.llm_client import LLMClient
+
+if TYPE_CHECKING:
+    from daily_paper.database.models import Paper
 
 logger = logging.getLogger(__name__)
 
@@ -33,51 +32,46 @@ class ReportGenerator:
 
     Typical usage:
         >>> config = Config.from_env()
-        >>> generator = ReportGenerator(config, session)
-        >>> report = generator.generate(top_k=10)
+        >>> generator = ReportGenerator(config)
+        >>> report = generator.generate(papers, themes, top_k=10)
         >>> print(report['highlights'])
 
     Attributes:
         config: Application configuration.
-        session: Database session.
         llm_client: LLM service client.
-        recommendation_manager: Recommendation system manager.
     """
 
     def __init__(
         self,
         config: Optional[Config] = None,
-        session: Optional[Session] = None,
         llm_client: Optional[LLMClient] = None,
-        recommendation_manager: Optional[RecommendationManager] = None,
     ):
         """
         Initialize the report generator.
 
         Args:
             config: Application configuration.
-            session: Database session.
             llm_client: LLM service client.
-            recommendation_manager: Recommendation manager instance.
         """
         self.config = config or Config.from_env()
-        self.session = session
         self.llm_client = llm_client or LLMClient(self.config.llm)
-        self.recommendation_manager = recommendation_manager or RecommendationManager(
-            self.config, self.session
-        )
 
     def generate(
         self,
+        papers: List[Paper],
+        themes: List[str],
         top_k: int = 10,
-        save_to_db: bool = True,
+        save_to_db: bool = False,
     ) -> dict:
         """
         Generate a daily report.
 
         Args:
-            top_k: Number of papers to include in report.
-            save_to_db: Whether to save report to database.
+            papers: List of papers to include in report (already recommended).
+            themes: Interest themes used for recommendation.
+            top_k: Number of papers to include in report (max).
+            save_to_db: DEPRECATED - This parameter is kept for backward compatibility
+                        but has no effect. Database saving is handled by the caller.
 
         Returns:
             Dictionary containing report data:
@@ -86,53 +80,20 @@ class ReportGenerator:
                 'papers': List[Paper objects],
                 'highlights': str,
                 'themes_used': List[str],
-                'recommendation_results': List[RecommendationResult],
             }
         """
-        logger.info(f"Starting daily report generation with top-{top_k} papers")
+        logger.info(f"Starting daily report generation with {len(papers)} papers")
 
-        # Get recommendations
-        logger.debug("Fetching recommendations for report")
-        recommendation_results = self.recommendation_manager.recommend(
-            top_k=top_k,
-            record_recommendations=True,
-        )
+        if not papers:
+            logger.warning("No papers provided for report generation")
+            return {}
 
-        if not recommendation_results:
-            logger.warning("No recommendations available for report, using fallback to recent unread papers")
-            # Fallback: Get recently fetched papers that haven't been read yet
-            papers = self._get_recent_unread_papers(top_k)
-            if not papers:
-                logger.error("No papers available for report generation")
-                return {}
-            recommendation_results = None
-            themes_used = []
-        else:
-            logger.info(f"Got {len(recommendation_results)} recommendations for report")
-            # Get paper objects
-            paper_ids = [r.paper_id for r in recommendation_results]
-            papers = (
-                self.session.query(Paper)
-                .filter(Paper.id.in_(paper_ids))
-                .all()
-            )
-
-            # Sort papers by recommendation rank
-            paper_rank = {r.paper_id: i for i, r in enumerate(recommendation_results)}
-            papers.sort(key=lambda p: paper_rank.get(p.id, float('inf')))
-
-            # Get active interest themes
-            active_themes = (
-                self.session.query(InterestTheme)
-                .filter(InterestTheme.is_active == True)
-                .all()
-            )
-            themes_used = [theme.theme for theme in active_themes]
-            logger.debug(f"Using {len(themes_used)} interest themes")
+        # Limit to top_k papers
+        papers = papers[:top_k]
 
         # Generate highlights
         logger.debug("Generating AI highlights for report")
-        highlights = self._generate_highlights(papers, themes_used)
+        highlights = self._generate_highlights(papers, themes)
         logger.info(f"Generated highlights: {len(highlights)} chars")
 
         # Build report
@@ -140,53 +101,14 @@ class ReportGenerator:
             'report_date': datetime.now(),
             'papers': papers,
             'highlights': highlights,
-            'themes_used': themes_used,
-            'recommendation_results': recommendation_results,
+            'themes_used': themes,
         }
-
-        # Save to database if requested
-        if save_to_db:
-            logger.debug("Saving report to database")
-            self._save_report(report)
 
         logger.info(
             f"Report generation complete: {len(papers)} papers, "
-            f"{len(themes_used)} themes, {len(highlights)} chars highlights"
+            f"{len(themes)} themes, {len(highlights)} chars highlights"
         )
         return report
-
-    def _get_recent_unread_papers(self, limit: int = 10) -> List[Paper]:
-        """
-        Get recently fetched papers that haven't been read yet.
-
-        A paper is considered "unread" if:
-        - It has no PaperInteraction record, OR
-        - It has a PaperInteraction with action='no_action'
-
-        Args:
-            limit: Maximum number of papers to return.
-
-        Returns:
-            List of Paper objects, sorted by creation date (newest first).
-        """
-        # Subquery to get IDs of papers that have been marked (interested/not_interested)
-        marked_paper_ids = (
-            self.session.query(PaperInteraction.paper_id)
-            .filter(PaperInteraction.action.in_(['interested', 'not_interested']))
-            .distinct()
-        )
-
-        # Get recent papers that are NOT marked
-        papers = (
-            self.session.query(Paper)
-            .filter(~Paper.id.in_(marked_paper_ids))
-            .order_by(Paper.created_at.desc())
-            .limit(limit)
-            .all()
-        )
-
-        logger.info(f"Found {len(papers)} recent unread papers for fallback")
-        return papers
 
     def _generate_highlights(
         self,
@@ -273,58 +195,3 @@ Format your response as:
         except Exception as e:
             logger.error(f"Failed to generate highlights: {e}")
             return "Highlights generation failed."
-
-    def _save_report(self, report: dict) -> DailyReport:
-        """
-        Save report to database.
-
-        Args:
-            report: Report dictionary from generate().
-
-        Returns:
-            Saved DailyReport object.
-        """
-        try:
-            # Serialize data
-            paper_ids = [p.id for p in report['papers']]
-            themes_ids_json = json.dumps(report['themes_used'])
-
-            daily_report = DailyReport(
-                report_date=report['report_date'],
-                recommendations=json.dumps(paper_ids),
-                highlights=report['highlights'],
-                themes_used=themes_ids_json,
-            )
-
-            self.session.add(daily_report)
-            self.session.commit()
-
-            logger.info(f"Saved report to database (ID: {daily_report.id})")
-            return daily_report
-
-        except Exception as e:
-            logger.error(f"Failed to save report: {e}")
-            self.session.rollback()
-            raise
-
-    def get_recent_reports(
-        self,
-        limit: int = 10,
-    ) -> List[DailyReport]:
-        """
-        Get recent daily reports.
-
-        Args:
-            limit: Maximum number of reports to return.
-
-        Returns:
-            List of DailyReport objects, most recent first.
-        """
-        reports = (
-            self.session.query(DailyReport)
-            .order_by(DailyReport.report_date.desc())
-            .limit(limit)
-            .all()
-        )
-
-        return reports

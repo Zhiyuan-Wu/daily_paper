@@ -104,82 +104,9 @@ async function loadSettingsConfig() {
             recommend_min_similarity: settings.recommendation.min_similarity || 0.5
         });
 
-        // Load auto refresh config
-        await loadAutoRefreshConfig();
-
     } catch (error) {
         console.error('Failed to load settings:', error);
         showMessage('加载设置失败: ' + error.message, 'error');
-    }
-}
-
-/**
- * Load auto refresh configuration
- */
-async function loadAutoRefreshConfig() {
-    try {
-        const config = await API.getSchedulerStatus();
-
-        // Update form
-        const enabledCheckbox = document.getElementById('autoRefreshEnabled');
-        const scheduleTypeSelect = document.getElementById('scheduleType');
-        const dailyHourSelect = document.getElementById('dailyHour');
-        const dailyMinuteSelect = document.getElementById('dailyMinute');
-        const weeklyDaySelect = document.getElementById('weeklyDay');
-        const weeklyHourSelect = document.getElementById('weeklyHour');
-        const weeklyMinuteSelect = document.getElementById('weeklyMinute');
-        const statusText = document.getElementById('autoRefreshStatusText');
-        const lastRunInfo = document.getElementById('lastRunInfo');
-
-        if (enabledCheckbox) {
-            enabledCheckbox.checked = config.enabled;
-        }
-
-        if (scheduleTypeSelect) {
-            scheduleTypeSelect.value = config.schedule_type || 'daily';
-            toggleScheduleType();
-        }
-
-        // Parse daily time (HH:MM format)
-        if (config.daily_time) {
-            const [dailyHour, dailyMinute] = config.daily_time.split(':').map(Number);
-            if (dailyHourSelect) dailyHourSelect.value = dailyHour;
-            if (dailyMinuteSelect) dailyMinuteSelect.value = dailyMinute;
-        }
-
-        if (weeklyDaySelect) {
-            weeklyDaySelect.value = config.weekly_day ?? 1;
-        }
-
-        // Parse weekly time (HH:MM format)
-        if (config.weekly_time) {
-            const [weeklyHour, weeklyMinute] = config.weekly_time.split(':').map(Number);
-            if (weeklyHourSelect) weeklyHourSelect.value = weeklyHour;
-            if (weeklyMinuteSelect) weeklyMinuteSelect.value = weeklyMinute;
-        }
-
-        if (statusText) {
-            statusText.textContent = config.enabled ? '已启用' : '禁用';
-        }
-
-        // Show last run info if available
-        if (lastRunInfo && (config.last_run_at || config.next_run_at)) {
-            lastRunInfo.style.display = 'block';
-
-            const lastRunTime = document.getElementById('lastRunTime');
-            const nextRunTime = document.getElementById('nextRunTime');
-
-            if (lastRunTime && config.last_run_at) {
-                lastRunTime.textContent = formatDate(config.last_run_at);
-            }
-
-            if (nextRunTime && config.next_run_at) {
-                nextRunTime.textContent = formatDate(config.next_run_at);
-            }
-        }
-
-    } catch (error) {
-        console.error('Failed to load auto refresh config:', error);
     }
 }
 
@@ -209,29 +136,6 @@ function bindForms() {
     const recommendationConfigForm = document.getElementById('recommendationConfigForm');
     if (recommendationConfigForm) {
         recommendationConfigForm.addEventListener('submit', saveRecommendationConfig);
-    }
-
-    // Auto refresh form
-    const autoRefreshForm = document.getElementById('autoRefreshForm');
-    if (autoRefreshForm) {
-        autoRefreshForm.addEventListener('submit', saveAutoRefreshConfig);
-    }
-
-    // Toggle checkbox change handler
-    const enabledCheckbox = document.getElementById('autoRefreshEnabled');
-    if (enabledCheckbox) {
-        enabledCheckbox.addEventListener('change', (e) => {
-            const statusText = document.getElementById('autoRefreshStatusText');
-            if (statusText) {
-                statusText.textContent = e.target.checked ? '已启用' : '禁用';
-            }
-        });
-    }
-
-    // Schedule type change handler
-    const scheduleTypeSelect = document.getElementById('scheduleType');
-    if (scheduleTypeSelect) {
-        scheduleTypeSelect.addEventListener('change', toggleScheduleType);
     }
 
     // View history button handler
@@ -302,77 +206,6 @@ async function saveRecommendationConfig(e) {
     } catch (error) {
         console.error('Failed to save recommendation config:', error);
         showMessage('保存失败: ' + error.message, 'error');
-    }
-}
-
-/**
- * Save auto refresh configuration
- */
-async function saveAutoRefreshConfig(e) {
-    e.preventDefault();
-
-    const enabledCheckbox = document.getElementById('autoRefreshEnabled');
-    const scheduleTypeSelect = document.getElementById('scheduleType');
-    const dailyHourSelect = document.getElementById('dailyHour');
-    const dailyMinuteSelect = document.getElementById('dailyMinute');
-    const weeklyDaySelect = document.getElementById('weeklyDay');
-    const weeklyHourSelect = document.getElementById('weeklyHour');
-    const weeklyMinuteSelect = document.getElementById('weeklyMinute');
-
-    const enabled = enabledCheckbox ? enabledCheckbox.checked : false;
-    const scheduleType = scheduleTypeSelect ? scheduleTypeSelect.value : 'daily';
-
-    // Format daily time as HH:MM
-    const dailyHour = dailyHourSelect ? parseInt(dailyHourSelect.value) : 9;
-    const dailyMinute = dailyMinuteSelect ? parseInt(dailyMinuteSelect.value) : 0;
-    const dailyTime = `${dailyHour.toString().padStart(2, '0')}:${dailyMinute.toString().padStart(2, '0')}`;
-
-    const weeklyDay = weeklyDaySelect ? parseInt(weeklyDaySelect.value) : 1;
-
-    // Format weekly time as HH:MM
-    const weeklyHour = weeklyHourSelect ? parseInt(weeklyHourSelect.value) : 9;
-    const weeklyMinute = weeklyMinuteSelect ? parseInt(weeklyMinuteSelect.value) : 0;
-    const weeklyTime = `${weeklyHour.toString().padStart(2, '0')}:${weeklyMinute.toString().padStart(2, '0')}`;
-
-    try {
-        await API.updateSchedulerConfig(
-            enabled,
-            scheduleType,
-            dailyTime,
-            weeklyDay,
-            weeklyTime
-        );
-        showMessage('自动刷新配置已保存', 'success');
-
-        // Reload config to update display
-        await loadAutoRefreshConfig();
-    } catch (error) {
-        console.error('Failed to save auto refresh config:', error);
-        showMessage('保存失败: ' + error.message, 'error');
-    }
-}
-
-/**
- * Toggle schedule type fields visibility
- */
-function toggleScheduleType() {
-    const scheduleTypeSelect = document.getElementById('scheduleType');
-    const dailyTimeGroup = document.getElementById('dailyTimeGroup');
-    const weeklyGroup = document.getElementById('weeklyGroup');
-    const weeklyTimeGroup = document.getElementById('weeklyTimeGroup');
-
-    if (!scheduleTypeSelect) return;
-
-    const scheduleType = scheduleTypeSelect.value;
-
-    if (scheduleType === 'daily') {
-        if (dailyTimeGroup) dailyTimeGroup.style.display = 'block';
-        if (weeklyGroup) weeklyGroup.style.display = 'none';
-        if (weeklyTimeGroup) weeklyTimeGroup.style.display = 'none';
-    } else if (scheduleType === 'weekly') {
-        if (dailyTimeGroup) dailyTimeGroup.style.display = 'none';
-        if (weeklyGroup) weeklyGroup.style.display = 'block';
-        if (weeklyTimeGroup) weeklyTimeGroup.style.display = 'block';
     }
 }
 

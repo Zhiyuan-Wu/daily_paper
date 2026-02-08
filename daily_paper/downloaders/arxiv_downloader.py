@@ -161,40 +161,65 @@ class ArxivDownloader(BaseDownloader):
             sanitized = sanitized[:200]
         return sanitized
 
-    def get_papers_by_date(self, target_date: date) -> List[PaperMetadata]:
+    def get_papers_by_date(
+        self,
+        target_date: Optional[date] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None
+    ) -> List[PaperMetadata]:
         """
-        Fetch arXiv papers published on a specific date.
+        Fetch arXiv papers for a date or date range.
 
         Note: arXiv API doesn't support precise date filtering. This method
         fetches recent papers in the configured categories and filters by
-        date locally. For more comprehensive results, it queries a range
-        around the target date.
+        date locally. For date ranges, it queries more results to cover
+        the range.
 
         Args:
-            target_date: The date to fetch papers for.
+            target_date: Single date to fetch (backward compatible).
+            start_date: Start of date range (inclusive).
+            end_date: End of date range (inclusive).
 
         Returns:
-            List of PaperMetadata for papers published on target_date.
-        """
-        logger.info(f"Fetching arXiv papers for {target_date} from categories: {self.categories}")
+            List of PaperMetadata for papers in the specified range.
 
-        query = self._build_date_query(target_date)
+        Raises:
+            ValueError: If neither target_date nor both start_date/end_date are provided.
+        """
+        # Determine date range
+        if target_date:
+            start_date = end_date = target_date
+        elif not (start_date and end_date):
+            raise ValueError("Must specify target_date OR both start_date and end_date")
+
+        logger.info(f"Fetching arXiv papers from {start_date} to {end_date} from categories: {self.categories}")
+
+        # Calculate how many papers we might need
+        days_span = (end_date - start_date).days + 1
+        papers_needed = self.max_results * max(1, days_span)
+
+        query = self._build_date_query(start_date)
         search = arxiv_lib.Search(
             query=query,
-            max_results=self.max_results,
+            max_results=papers_needed * 3,  # Get 3x to account for sparse days
             sort_by=arxiv_lib.SortCriterion.SubmittedDate,
             sort_order=arxiv_lib.SortOrder.Descending,
         )
 
         papers: List[PaperMetadata] = []
 
-        # Fetch results and filter by date
-        logger.debug(f"Querying arXiv API with max_results={self.max_results}")
+        # Fetch results and filter by date range
+        logger.debug(f"Querying arXiv API with max_results={papers_needed * 3}")
         for result in self._client.results(search):
             published_date = result.published
 
-            # Check if this paper is from the target date
-            if self._is_same_date(published_date, target_date):
+            if not published_date:
+                continue
+
+            result_date = published_date.date()
+
+            # Check if this paper is within the date range
+            if start_date <= result_date <= end_date:
                 arxiv_id = self._extract_arxiv_id(result.entry_id)
 
                 metadata = PaperMetadata(
@@ -203,14 +228,19 @@ class ArxivDownloader(BaseDownloader):
                     title=result.title,
                     authors=[author.name for author in result.authors],
                     abstract=result.summary.replace("\n", " ").strip(),
-                    published_date=published_date.date() if published_date else None,
+                    published_date=result_date,
                     url=result.entry_id,
                     pdf_url=result.pdf_url,
                 )
                 papers.append(metadata)
                 logger.debug(f"Matched paper: {arxiv_id} - {result.title[:50]}...")
 
-        logger.info(f"Found {len(papers)} arXiv papers for {target_date}")
+            # Optimization: stop if we've gone past the start date and have enough papers
+            if result_date < start_date and len(papers) >= papers_needed:
+                logger.debug(f"Early stop: got {len(papers)} papers, moved past start date")
+                break
+
+        logger.info(f"Found {len(papers)} arXiv papers from {start_date} to {end_date}")
         return papers
 
     def download_paper(self, paper_id: str, dest_dir: Path) -> Path:

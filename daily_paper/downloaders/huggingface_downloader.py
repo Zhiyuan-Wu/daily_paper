@@ -16,7 +16,7 @@ from __future__ import annotations
 import hashlib
 import re
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import List, Optional
 from urllib.parse import urljoin
@@ -246,42 +246,71 @@ class HuggingFaceDownloader(BaseDownloader):
             pdf_url=result.pdf_url,
         )
 
-    def get_papers_by_date(self, target_date: date) -> List[PaperMetadata]:
+    def get_papers_by_date(
+        self,
+        target_date: Optional[date] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None
+    ) -> List[PaperMetadata]:
         """
-        Fetch HuggingFace papers for a specific date.
+        Fetch HuggingFace papers for a date or date range.
 
         Scrapes the HuggingFace daily papers page and fetches detailed
-        metadata from arXiv for each paper found.
+        metadata from arXiv for each paper found. For date ranges,
+        iterates through each day in the range.
 
         Args:
-            target_date: The date to fetch papers for.
+            target_date: Single date to fetch (backward compatible).
+            start_date: Start of date range (inclusive).
+            end_date: End of date range (inclusive).
 
         Returns:
-            List of PaperMetadata for papers from target_date.
+            List of PaperMetadata for papers in the specified range.
+
+        Raises:
+            ValueError: If neither target_date nor both start_date/end_date are provided.
         """
-        url = self._build_date_url(target_date)
+        # Determine date range
+        if target_date:
+            start_date = end_date = target_date
+        elif not (start_date and end_date):
+            raise ValueError("Must specify target_date OR both start_date and end_date")
 
-        try:
-            html = self._fetch_page(url)
-        except requests.RequestException as e:
-            # If the page doesn't exist or fails, return empty list
-            return []
+        logger.info(f"Fetching HuggingFace papers from {start_date} to {end_date}")
 
-        hf_papers = self._parse_papers_page(html)
-        papers: List[PaperMetadata] = []
+        all_papers: List[PaperMetadata] = []
+        current_date = start_date
 
-        for hf_paper in hf_papers:
-            # Parse the paper ID (should be arXiv ID)
-            arxiv_id = self._parse_paper_id(hf_paper.paper_id)
+        # Iterate through each day in the range
+        while current_date <= end_date:
+            url = self._build_date_url(current_date)
 
-            # Fetch detailed metadata from arXiv
-            metadata = self._fetch_arxiv_metadata(arxiv_id)
-            if metadata:
-                # Override source to indicate it came from HuggingFace
-                metadata.source = self.source_name
-                papers.append(metadata)
+            try:
+                html = self._fetch_page(url)
+            except requests.RequestException:
+                # If the page doesn't exist or fails, skip this day
+                logger.debug(f"No HuggingFace papers found for {current_date}")
+                current_date += timedelta(days=1)
+                continue
 
-        return papers
+            hf_papers = self._parse_papers_page(html)
+
+            for hf_paper in hf_papers:
+                # Parse the paper ID (should be arXiv ID)
+                arxiv_id = self._parse_paper_id(hf_paper.paper_id)
+
+                # Fetch detailed metadata from arXiv
+                metadata = self._fetch_arxiv_metadata(arxiv_id)
+                if metadata:
+                    # Override source to indicate it came from HuggingFace
+                    metadata.source = self.source_name
+                    all_papers.append(metadata)
+                    logger.debug(f"Found paper: {arxiv_id} - {metadata.title[:50]}...")
+
+            current_date += timedelta(days=1)
+
+        logger.info(f"Found {len(all_papers)} HuggingFace papers from {start_date} to {end_date}")
+        return all_papers
 
     def download_paper(self, paper_id: str, dest_dir: Path) -> Path:
         """

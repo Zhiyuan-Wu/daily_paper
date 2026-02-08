@@ -8,13 +8,15 @@ the user has marked as "not_interested", assigning negative scores.
 from __future__ import annotations
 
 import logging
-from typing import List
+from typing import TYPE_CHECKING, List
 
 from daily_paper.config import Config
-from daily_paper.database import Paper, PaperInteraction
 from daily_paper.embeddings.client import EmbeddingClient
 from daily_paper.embeddings.utils import cosine_similarity
-from daily_paper.recommenders.base import BaseRecommender, RecommendationResult
+from daily_paper.recommenders.base import BaseRecommender, RecommendationContext, RecommendationResult
+
+if TYPE_CHECKING:
+    from daily_paper.database.models import Paper
 
 logger = logging.getLogger(__name__)
 
@@ -32,33 +34,30 @@ class DisinterestedSemanticRecommender(BaseRecommender):
     what the user disliked get negative scores, downweighting them in fusion.
 
     Typical usage:
-        >>> recommender = DisinterestedSemanticRecommender(session, config, embedding_client)
-        >>> results = recommender.recommend(candidate_papers, top_k=100)
+        >>> recommender = DisinterestedSemanticRecommender(embedding_client, config)
+        >>> context = RecommendationContext(candidate_papers=papers, disinterested_paper_ids={...})
+        >>> results = recommender.recommend(context, top_k=100)
         >>> # Results will have negative scores for papers similar to dislikes
 
     Attributes:
-        session: Database session.
         config: Application configuration.
         embedding_client: Embedding service client.
     """
 
     def __init__(
         self,
-        session,
+        embedding_client: EmbeddingClient,
         config: Config = None,
-        embedding_client: EmbeddingClient = None,
     ):
         """
         Initialize the disinterested semantic recommender.
 
         Args:
-            session: SQLAlchemy database session.
-            config: Application configuration.
             embedding_client: Embedding service client.
+            config: Application configuration.
         """
-        super().__init__(session, config)
+        super().__init__(embedding_client, config)
         self.config = config or Config.from_env()
-        self.embedding_client = embedding_client or EmbeddingClient(self.config.embedding)
 
     @property
     def strategy_name(self) -> str:
@@ -67,17 +66,15 @@ class DisinterestedSemanticRecommender(BaseRecommender):
 
     def recommend(
         self,
-        candidate_papers: List[Paper],
+        context: RecommendationContext,
         top_k: int = 10,
-        **kwargs,
     ) -> List[RecommendationResult]:
         """
         Filter papers based on similarity to disinterested papers.
 
         Args:
-            candidate_papers: List of papers to consider.
+            context: RecommendationContext containing candidate papers and disinterested paper IDs.
             top_k: Maximum number of results.
-            **kwargs: Additional parameters (similarity_threshold).
 
         Returns:
             List of RecommendationResult with negative scores for papers
@@ -85,22 +82,15 @@ class DisinterestedSemanticRecommender(BaseRecommender):
             degree of similarity (more negative = more similar).
 
         Implementation details:
-            - Gets papers marked "not_interested"
+            - Gets papers marked "not_interested" from context
             - Calculates mean cosine similarity to disinterested papers
             - Assigns negative score = -avg_similarity
             - Papers with no similarity to disinterested get score 0.0
         """
-        # Get configuration
-        similarity_threshold = kwargs.get("similarity_threshold", 0.3)
+        # Get disinterested papers from context
+        disinterested_papers = context.get_disinterested_papers()
 
-        # Get disinterested papers (all time, not just recent)
-        disinterested_interactions = (
-            self.session.query(PaperInteraction)
-            .filter(PaperInteraction.action == "not_interested")
-            .all()
-        )
-
-        if not disinterested_interactions:
+        if not disinterested_papers:
             logger.info("No disinterested papers found, returning neutral scores")
             return [
                 RecommendationResult(
@@ -109,25 +99,12 @@ class DisinterestedSemanticRecommender(BaseRecommender):
                     reason="No disinterested papers to compare",
                     strategy_name=self.strategy_name,
                 )
-                for paper in candidate_papers
+                for paper in context.candidate_papers
             ]
-
-        disinterested_paper_ids = [i.paper_id for i in disinterested_interactions]
-
-        # Get disinterested papers
-        disinterested_papers = (
-            self.session.query(Paper)
-            .filter(Paper.id.in_(disinterested_paper_ids))
-            .all()
-        )
-
-        if not disinterested_papers:
-            logger.warning("Found disinterested interactions but no papers")
-            return []
 
         logger.info(
             f"Disinterested semantic: Found {len(disinterested_papers)} disinterested papers, "
-            f"analyzing {len(candidate_papers)} candidates"
+            f"analyzing {len(context.candidate_papers)} candidates"
         )
 
         # Generate embeddings for disinterested papers
@@ -143,7 +120,7 @@ class DisinterestedSemanticRecommender(BaseRecommender):
 
             # Generate embeddings for candidate papers
             paper_texts = []
-            for paper in candidate_papers:
+            for paper in context.candidate_papers:
                 text_parts = []
                 if paper.abstract:
                     text_parts.append(paper.abstract)
@@ -169,7 +146,8 @@ class DisinterestedSemanticRecommender(BaseRecommender):
             avg_similarity = sum(similarities) / len(similarities)
 
             # Assign negative score (penalty for being similar to dislikes)
-            # Only apply penalty if similarity is above threshold
+            # Use a default threshold of 0.3
+            similarity_threshold = 0.3
             if avg_similarity >= similarity_threshold:
                 score = -avg_similarity
                 reason = f"Similar to {len(disinterested_papers)} disinterested papers (avg: {avg_similarity:.3f})"
@@ -179,7 +157,7 @@ class DisinterestedSemanticRecommender(BaseRecommender):
 
             results.append(
                 RecommendationResult(
-                    paper_id=candidate_papers[idx].id,
+                    paper_id=context.candidate_papers[idx].id,
                     score=score,
                     reason=reason,
                     strategy_name=self.strategy_name,

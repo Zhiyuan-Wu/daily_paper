@@ -26,43 +26,15 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class Section:
-    """
-    A text section extracted from a PDF.
-
-    Represents a logical section of the document with a heading
-    and associated content.
-
-    Attributes:
-        title: Section heading/title.
-        content: Section text content.
-        page_number: Page number where section starts (1-indexed).
-    """
-
-    title: str
-    content: str
-    page_number: int
-
-    def to_dict(self) -> dict:
-        """Convert section to dictionary."""
-        return {
-            "title": self.title,
-            "content": self.content,
-            "page_number": self.page_number,
-        }
-
-
-@dataclass
 class ParseResult:
     """
     Result of PDF text extraction.
 
-    Contains all extracted content including full text, sections,
+    Contains all extracted content including full text
     and metadata about the extraction process.
 
     Attributes:
         text: Full extracted text (all pages concatenated).
-        sections: List of identified sections with headings.
         page_count: Total number of pages in the PDF.
         method: Extraction method used ('pymupdf' or 'ocr').
         success: Whether extraction was successful.
@@ -71,7 +43,6 @@ class ParseResult:
     """
 
     text: str
-    sections: List[Section] = field(default_factory=list)
     page_count: int = 0
     method: str = "pymupdf"
     success: bool = True
@@ -82,7 +53,6 @@ class ParseResult:
         """Convert result to dictionary."""
         return {
             "text": self.text,
-            "sections": [s.to_dict() for s in self.sections],
             "page_count": self.page_count,
             "method": self.method,
             "success": self.success,
@@ -104,40 +74,12 @@ class PDFParser:
         >>> result = parser.parse(paper)
         >>> print(result.text)
         >>> print(f"Text saved to: {paper.text_path}")
-        >>> for section in result.sections:
-        ...     print(f"{section.title}: {section.content[:100]}...")
 
     Attributes:
         ocr_config: Configuration for OCR service.
         min_char_threshold: Minimum characters to consider extraction successful.
         min_density_threshold: Minimum ratio of non-whitespace characters.
     """
-
-    # Common section headings to identify
-    SECTION_PATTERNS = [
-        r"^Abstract$",
-        r"^Introduction$",
-        r"^Related Work$",
-        r"^Background$",
-        r"^Preliminary$",
-        r"^Problem Formulation$",
-        r"^Methods?$",
-        r"^Methodology$",
-        r"^Approaches?$",
-        r"^Materials and Methods$",
-        r"^Experiment Settings?$",
-        r"^Experiments?$",
-        r"^Experimental Results?$",
-        r"^Evaluation$",
-        r"^Results?$",
-        r"^Findings?$",
-        r"^Data Analysis$",
-        r"^Discussion$",
-        r"^Results and Discussion$",
-        r"^Conclusion$",
-        r"^Conclusions$",
-        r"^References?$",
-    ]
 
     def __init__(
         self,
@@ -157,24 +99,17 @@ class PDFParser:
         self.min_char_threshold = min_char_threshold
         self.min_density_threshold = min_density_threshold
 
-        # Compile section patterns for performance
-        self.section_patterns = [
-            re.compile(pattern, re.IGNORECASE | re.MULTILINE)
-            for pattern in self.SECTION_PATTERNS
-        ]
-
     def _extract_with_pymupdf(self, pdf_path: Path) -> ParseResult:
         """
         Extract text using PyMuPDF (fitz).
 
-        Opens the PDF and extracts text from each page. Attempts to
-        identify sections based on common heading patterns.
+        Opens the PDF and extracts text from each page.
 
         Args:
             pdf_path: Path to the PDF file.
 
         Returns:
-            ParseResult with extracted text and sections.
+            ParseResult with extracted text.
 
         Raises:
             IOError: If the PDF cannot be opened or read.
@@ -185,55 +120,10 @@ class PDFParser:
             raise IOError(f"Failed to open PDF {pdf_path}: {e}")
 
         all_text: List[str] = []
-        sections: List[Section] = []
-        current_section: Optional[Dict] = None
-        current_section_content: List[str] = []
 
         for page_num, page in enumerate(doc, start=1):
             page_text = page.get_text()
             all_text.append(page_text)
-
-            # Try to identify sections
-            lines = page_text.split("\n")
-            for line in lines:
-                stripped = line.strip()
-
-                # Check if this line matches a section heading
-                is_section = False
-                for pattern in self.section_patterns:
-                    if pattern.match(stripped):
-                        # Save previous section if exists
-                        if current_section:
-                            sections.append(
-                                Section(
-                                    title=current_section["title"],
-                                    content=" ".join(current_section_content).strip(),
-                                    page_number=current_section["page"],
-                                )
-                            )
-                            current_section_content = []
-
-                        # Start new section
-                        current_section = {
-                            "title": stripped,
-                            "page": page_num,
-                        }
-                        is_section = True
-                        break
-
-                # Add non-section lines to current section content
-                if not is_section and stripped and current_section:
-                    current_section_content.append(stripped)
-
-        # Save final section
-        if current_section and current_section_content:
-            sections.append(
-                Section(
-                    title=current_section["title"],
-                    content=" ".join(current_section_content).strip(),
-                    page_number=current_section["page"],
-                )
-            )
 
         doc.close()
 
@@ -243,7 +133,6 @@ class PDFParser:
 
         return ParseResult(
             text=full_text,
-            sections=sections,
             page_count=len(all_text),
             method="pymupdf",
             success=True,
@@ -423,7 +312,6 @@ class PDFParser:
 
             return ParseResult(
                 text=self._clean_text(combined_text),
-                sections=[],  # OCR doesn't identify sections
                 method="ocr",
                 success=True,
                 page_count=page_count,
@@ -465,25 +353,6 @@ class PDFParser:
                 text="",
                 success=False,
                 error_message=f"PDF file not found: {pdf_path}",
-            )
-
-        # Validation 2: File readability
-        if not os.access(pdf_path, os.R_OK):
-            logger.warning(f"PDF file not readable: {pdf_path}")
-            return ParseResult(
-                text="",
-                success=False,
-                error_message=f"PDF file not readable: {pdf_path}",
-            )
-
-        # Validation 3: File size (avoid empty or corrupted files)
-        file_size = pdf_path.stat().st_size
-        if file_size < 100:
-            logger.warning(f"PDF file too small ({file_size} bytes): {pdf_path}")
-            return ParseResult(
-                text="",
-                success=False,
-                error_message=f"PDF file too small: {pdf_path}",
             )
 
         # Try PyMuPDF extraction first

@@ -91,22 +91,63 @@ def _generate_report_task(
     """Background task for report generation."""
     try:
         from daily_paper.reports import ReportGenerator
+        from daily_paper.recommenders.base import RecommendationContext
+        from daily_paper.recommenders.manager import RecommendationManager
+        from daily_paper.database import UserProfile
 
         task_status[task_id]["progress"] = 10
         logger.info(f"Generating report with top_k={top_k}, date={date}")
 
         config = Config.from_env()
-        generator = ReportGenerator(config, db)
 
-        task_status[task_id]["progress"] = 30
+        # Step 1: Generate recommendations
+        task_status[task_id]["progress"] = 20
+        recommendation_manager = RecommendationManager(config)
 
-        # Generate report
-        report_dict = generator.generate(top_k=top_k, save_to_db=True)
+        # Build recommendation context
+        candidate_papers = db.query(Paper).all()
 
-        task_status[task_id]["progress"] = 90
+        # Get interested/disinterested paper IDs
+        from daily_paper.database import PaperInteraction
+        interested_ids = set(
+            db.query(PaperInteraction.paper_id)
+            .filter(PaperInteraction.action == 'interested')
+            .distinct()
+            .all()
+        )
+        interested_ids = {pid[0] for pid in interested_ids}
 
-        # Check if report was generated successfully
-        if not report_dict or 'report_date' not in report_dict:
+        disinterested_ids = set(
+            db.query(PaperInteraction.paper_id)
+            .filter(PaperInteraction.action == 'not_interested')
+            .distinct()
+            .all()
+        )
+        disinterested_ids = {pid[0] for pid in disinterested_ids}
+
+        # Get user keywords from profile
+        user_profile = db.query(UserProfile).filter(UserProfile.id == 1).first()
+        user_keywords = user_profile.interests if user_profile else []
+
+        # Get recommendation counts
+        interactions = db.query(PaperInteraction).all()
+        recommendation_counts = {i.paper_id: i.recommendation_count for i in interactions}
+        last_recommended_at = {i.paper_id: i.last_recommended_at for i in interactions if i.last_recommended_at}
+
+        context = RecommendationContext(
+            candidate_papers=candidate_papers,
+            interested_paper_ids=interested_ids,
+            disinterested_paper_ids=disinterested_ids,
+            user_keywords=user_keywords,
+            recommendation_counts=recommendation_counts,
+            last_recommended_at=last_recommended_at,
+        )
+
+        # Generate recommendations
+        task_status[task_id]["progress"] = 40
+        recommendation_results = recommendation_manager.recommend(context, top_k=top_k)
+
+        if not recommendation_results:
             task_status[task_id] = {
                 "status": "failed",
                 "error": "无法生成日报：没有找到推荐的论文。请先配置您的兴趣关键词并标记一些感兴趣的论文。"
@@ -114,21 +155,61 @@ def _generate_report_task(
             logger.warning(f"Report generation failed: no recommendations available")
             return
 
-        # Extract report ID from database
-        report = db.query(DailyReport).filter(
-            DailyReport.report_date == report_dict['report_date']
-        ).order_by(DailyReport.created_at.desc()).first()
+        # Get recommended papers
+        paper_ids = [r.paper_id for r in recommendation_results]
+        papers = db.query(Paper).filter(Paper.id.in_(paper_ids)).all()
+
+        # Sort papers by recommendation rank
+        paper_rank = {r.paper_id: i for i, r in enumerate(recommendation_results)}
+        papers.sort(key=lambda p: paper_rank.get(p.id, float('inf')))
+
+        # Get active interest themes
+        task_status[task_id]["progress"] = 60
+        active_themes = db.query(InterestTheme).filter(InterestTheme.is_active == True).all()
+        themes = [theme.theme for theme in active_themes]
+
+        # Step 2: Generate report using papers and themes
+        task_status[task_id]["progress"] = 70
+        generator = ReportGenerator(config)
+        report_dict = generator.generate(papers=papers, themes=themes, top_k=top_k)
+
+        task_status[task_id]["progress"] = 90
+
+        # Check if report was generated successfully
+        if not report_dict or 'report_date' not in report_dict:
+            task_status[task_id] = {
+                "status": "failed",
+                "error": "无法生成日报：报告生成失败。"
+            }
+            logger.warning(f"Report generation failed: generate() returned empty result")
+            return
+
+        # Save report to database
+        import json
+        paper_ids = [p.id for p in report_dict['papers']]
+        themes_json = json.dumps(report_dict['themes_used'])
+
+        daily_report = DailyReport(
+            report_date=report_dict['report_date'],
+            recommendations=json.dumps(paper_ids),
+            highlights=report_dict['highlights'],
+            themes_used=themes_json,
+        )
+
+        db.add(daily_report)
+        db.commit()
 
         task_status[task_id] = {
             "status": "completed",
             "progress": 100,
-            "report_id": report.id if report else None
+            "report_id": daily_report.id
         }
 
-        logger.info(f"Report generation completed: task_id={task_id}, report_id={report.id if report else None}")
+        logger.info(f"Report generation completed: task_id={task_id}, report_id={daily_report.id}")
 
     except Exception as e:
         logger.error(f"Report generation failed for task {task_id}: {e}")
+        db.rollback()
         task_status[task_id] = {
             "status": "failed",
             "error": str(e)

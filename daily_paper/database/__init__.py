@@ -17,7 +17,6 @@ from daily_paper.database.models import (
     DailyReport,
     TaskHistory,
     TaskStep,
-    SchedulerConfig,
 )
 
 __all__ = [
@@ -32,5 +31,4 @@ __all__ = [
     "DailyReport",
     "TaskHistory",
     "TaskStep",
-    "SchedulerConfig",
 ]

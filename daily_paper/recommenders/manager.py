@@ -5,15 +5,11 @@ Recommendation manager for orchestrating recommendation strategies.
 from __future__ import annotations
 
 import logging
-from datetime import datetime
-from typing import Dict, List, Optional
-
-from sqlalchemy.orm import Session
+from typing import Dict, List, Optional, Set
 
 from daily_paper.config import Config
-from daily_paper.database import Paper, PaperInteraction
 from daily_paper.embeddings.client import EmbeddingClient
-from daily_paper.recommenders.base import RecommendationResult
+from daily_paper.recommenders.base import RecommendationContext, RecommendationResult
 from daily_paper.recommenders.fusion import FusionEngine
 from daily_paper.recommenders.registry import StrategyRegistry
 from daily_paper.summarizers.llm_client import LLMClient
@@ -40,14 +36,19 @@ class RecommendationManager:
 
     Typical usage:
         >>> config = Config.from_env()
-        >>> manager = RecommendationManager(config, session)
-        >>> results = manager.recommend(top_k=10)
+        >>> manager = RecommendationManager(config)
+        >>> context = RecommendationContext(
+        ...     candidate_papers=papers,
+        ...     interested_paper_ids={1, 2},
+        ...     user_keywords=["machine learning"],
+        ...     recommendation_counts={},
+        ... )
+        >>> results = manager.recommend(context, top_k=10)
         >>> for result in results:
         ...     print(f"Paper {result.paper_id}: {result.score:.3f}")
 
     Attributes:
         config: Application configuration.
-        session: Database session.
         embedding_client: Embedding service client.
         llm_client: LLM service client.
         fusion_engine: Fusion engine for combining strategy results.
@@ -56,7 +57,6 @@ class RecommendationManager:
     def __init__(
         self,
         config: Optional[Config] = None,
-        session: Optional[Session] = None,
         embedding_client: Optional[EmbeddingClient] = None,
         llm_client: Optional[LLMClient] = None,
     ):
@@ -65,12 +65,10 @@ class RecommendationManager:
 
         Args:
             config: Application configuration.
-            session: Database session.
             embedding_client: Embedding service client.
             llm_client: LLM service client.
         """
         self.config = config or Config.from_env()
-        self.session = session
         self.embedding_client = embedding_client or EmbeddingClient(self.config.embedding)
         self.llm_client = llm_client or LLMClient(self.config.llm)
 
@@ -103,18 +101,16 @@ class RecommendationManager:
 
     def recommend(
         self,
+        context: RecommendationContext,
         top_k: int = 10,
-        candidate_papers: Optional[List[Paper]] = None,
-        record_recommendations: bool = True,
         strategy_weights: Optional[Dict[str, float]] = None,
     ) -> List[RecommendationResult]:
         """
         Generate paper recommendations using configured strategies.
 
         Args:
+            context: RecommendationContext with all necessary data.
             top_k: Number of recommendations to return.
-            candidate_papers: Papers to consider (None = all unread papers).
-            record_recommendations: Whether to record recommendations in database.
             strategy_weights: Optional weight overrides for fusion.
 
         Returns:
@@ -134,18 +130,13 @@ class RecommendationManager:
             logger.warning("No strategies enabled in configuration")
             return []
 
-        # Get candidate papers
-        if candidate_papers is None:
-            logger.debug("Fetching candidate papers from database")
-            candidate_papers = self._get_candidate_papers()
-
-        if not candidate_papers:
-            logger.warning("No candidate papers available")
+        if not context.candidate_papers:
+            logger.warning("No candidate papers provided in context")
             return []
 
         logger.info(
             f"Generating recommendations with {len(enabled_strategies)} strategies, "
-            f"{len(candidate_papers)} candidates, top_k={top_k}"
+            f"{len(context.candidate_papers)} candidates, top_k={top_k}"
         )
 
         # Set strategy weights if provided
@@ -163,9 +154,8 @@ class RecommendationManager:
             try:
                 # Build kwargs based on strategy requirements
                 strategy_kwargs = {
-                    "session": self.session,
-                    "config": self.config,
                     "embedding_client": self.embedding_client,
+                    "config": self.config,
                 }
 
                 # Only add llm_client for strategies that need it
@@ -174,7 +164,7 @@ class RecommendationManager:
 
                 strategy = StrategyRegistry.get_strategy(strategy_name, **strategy_kwargs)
 
-                results = strategy.recommend(candidate_papers, top_k=top_k * 2)
+                results = strategy.recommend(context, top_k=top_k * 2)
                 all_results[strategy_name] = results
                 logger.info(f"Strategy '{strategy_name}': {len(results)} results")
 
@@ -192,12 +182,11 @@ class RecommendationManager:
             try:
                 strategy = StrategyRegistry.get_strategy(
                     filter_name,
-                    session=self.session,
-                    config=self.config,
                     embedding_client=self.embedding_client,
+                    config=self.config,
                 )
 
-                filter_results = strategy.recommend(candidate_papers, top_k=len(candidate_papers))
+                filter_results = strategy.recommend(context, top_k=len(context.candidate_papers))
 
                 # For disinterested keyword filter: exclude papers with negative scores
                 # For repetition filter: exclude papers with score 0.0
@@ -220,79 +209,8 @@ class RecommendationManager:
         # Fuse results
         fused = self.fusion_engine.fuse(all_results, top_k=top_k)
 
-        # Record recommendations
-        if record_recommendations and fused:
-            logger.debug(f"Recording {len(fused)} recommendations to database")
-            self._record_recommendations(fused)
-
         logger.info(
             f"Recommendation generation complete: {len(fused)} recommendations, "
             f"top_score={fused[0].score:.4f if fused else 0:.4f}"
         )
         return fused
-
-    def _get_candidate_papers(self) -> List[Paper]:
-        """
-        Get candidate papers for recommendation.
-
-        Returns:
-            List of papers to consider for recommendation.
-        """
-        # Get IDs of papers that have been read
-        read_paper_ids = set(
-            pid
-            for (pid,) in self.session.query(PaperInteraction.paper_id)
-            .filter(PaperInteraction.action.in_(["interested", "not_interested"]))
-            .all()
-        )
-
-        # Filter out read papers
-        if read_paper_ids:
-            candidates = (
-                self.session.query(Paper)
-                .filter(~Paper.id.in_(read_paper_ids))
-                .all()
-            )
-        else:
-            candidates = self.session.query(Paper).all()
-
-        logger.info(f"Found {len(candidates)} candidate papers")
-        return candidates
-
-    def _record_recommendations(self, results: List[RecommendationResult]) -> None:
-        """
-        Record recommendations in database.
-
-        Args:
-            results: Recommendation results to record.
-        """
-        try:
-            for result in results:
-                # Get or create interaction record
-                interaction = (
-                    self.session.query(PaperInteraction)
-                    .filter(PaperInteraction.paper_id == result.paper_id)
-                    .first()
-                )
-
-                if interaction:
-                    # Update recommendation count
-                    interaction.recommendation_count += 1
-                    interaction.last_recommended_at = datetime.now()
-                else:
-                    # Create new interaction record
-                    interaction = PaperInteraction(
-                        user_id=1,
-                        paper_id=result.paper_id,
-                        action="no_action",
-                        recommendation_count=1,
-                        last_recommended_at=datetime.now(),
-                    )
-                    self.session.add(interaction)
-
-            self.session.commit()
-            logger.info(f"Recorded {len(results)} recommendations in database")
-
-        except Exception as e:
-            logger.error(f"Failed to record recommendations: {e}")
-            self.session.rollback()

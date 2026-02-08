@@ -5,12 +5,57 @@ Base recommender interface for plugin architecture.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import List, Optional
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import TYPE_CHECKING, Dict, List, Optional, Set
 
-from sqlalchemy.orm import Session
+if TYPE_CHECKING:
+    from daily_paper.database.models import Paper
 
-from daily_paper.database.models import Paper
+
+@dataclass
+class RecommendationContext:
+    """
+    Context data for recommendation (replaces database access).
+
+    This class encapsulates all data that recommenders need from the database,
+    enabling recommenders to be database-free and testable.
+
+    Attributes:
+        candidate_papers: Papers to consider for recommendation.
+        interested_paper_ids: IDs of papers the user is interested in.
+        disinterested_paper_ids: IDs of papers the user is not interested in.
+        user_keywords: User's interest keywords.
+        recommendation_counts: How many times each paper was recommended.
+        last_recommended_at: Last recommendation time for each paper.
+    """
+
+    candidate_papers: List[Paper]
+    interested_paper_ids: Set[int] = field(default_factory=set)
+    disinterested_paper_ids: Set[int] = field(default_factory=set)
+    user_keywords: List[str] = field(default_factory=list)
+    recommendation_counts: Dict[int, int] = field(default_factory=dict)
+    last_recommended_at: Dict[int, datetime] = field(default_factory=dict)
+
+    def get_interested_papers(self) -> List[Paper]:
+        """Get papers that user is interested in."""
+        return [p for p in self.candidate_papers if p.id in self.interested_paper_ids]
+
+    def get_disinterested_papers(self) -> List[Paper]:
+        """Get papers that user is not interested in."""
+        return [p for p in self.candidate_papers if p.id in self.disinterested_paper_ids]
+
+    def is_interested(self, paper_id: int) -> bool:
+        """Check if paper is interested."""
+        return paper_id in self.interested_paper_ids
+
+    def is_disinterested(self, paper_id: int) -> bool:
+        """Check if paper is disinterested."""
+        return paper_id in self.disinterested_paper_ids
+
+    def get_recommendation_count(self, paper_id: int) -> int:
+        """Get how many times a paper was recommended."""
+        return self.recommendation_counts.get(paper_id, 0)
 
 
 @dataclass
@@ -54,41 +99,40 @@ class BaseRecommender(ABC):
     3. FusionEngine combines all results using Reciprocal Rank Fusion
 
     Example:
-        >>> recommender = KeywordSemanticRecommender(session, config)
-        >>> results = recommender.recommend(candidate_papers, top_k=10)
+        >>> recommender = KeywordSemanticRecommender(embedding_client, config)
+        >>> context = RecommendationContext(candidate_papers=papers, user_keywords=keywords)
+        >>> results = recommender.recommend(context, top_k=10)
         >>> for result in results:
         ...     print(f"Paper {result.paper_id}: {result.score}")
     """
 
     def __init__(
         self,
-        session: Session,
+        embedding_client,
         config: Optional[object] = None,
     ):
         """
         Initialize the recommender.
 
         Args:
-            session: SQLAlchemy database session.
+            embedding_client: Client for generating embeddings.
             config: Recommendation configuration object.
         """
-        self.session = session
+        self.embedding_client = embedding_client
         self.config = config
 
     @abstractmethod
     def recommend(
         self,
-        candidate_papers: List[Paper],
+        context: RecommendationContext,
         top_k: int = 10,
-        **kwargs,
     ) -> List[RecommendationResult]:
         """
-        Generate recommendations from candidate papers.
+        Generate recommendations based on context data.
 
         Args:
-            candidate_papers: List of papers to consider for recommendation.
+            context: RecommendationContext with all necessary data.
             top_k: Maximum number of recommendations to return.
-            **kwargs: Additional strategy-specific parameters.
 
         Returns:
             List of RecommendationResult objects, sorted by score descending.
@@ -108,7 +152,7 @@ class BaseRecommender(ABC):
 
     def _filter_read_papers(
         self,
-        papers: List[Paper],
+        context: RecommendationContext,
     ) -> List[Paper]:
         """
         Filter out papers that have already been read.
@@ -116,18 +160,10 @@ class BaseRecommender(ABC):
         Helper method used by multiple strategies.
 
         Args:
-            papers: List of candidate papers.
+            context: RecommendationContext containing interaction data.
 
         Returns:
             List of papers that haven't been read yet.
         """
-        from daily_paper.database.models import PaperInteraction
-
-        read_paper_ids = set(
-            self.session.query(PaperInteraction.paper_id)
-            .filter(PaperInteraction.action.in_(["interested", "not_interested"]))
-            .all()
-        )
-        read_paper_ids = {pid for (pid,) in read_paper_ids}
-
-        return [p for p in papers if p.id not in read_paper_ids]
+        read_paper_ids = context.interested_paper_ids | context.disinterested_paper_ids
+        return [p for p in context.candidate_papers if p.id not in read_paper_ids]

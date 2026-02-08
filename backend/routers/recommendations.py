@@ -13,11 +13,64 @@ from sqlalchemy.orm import Session
 from backend.dependencies import get_db, get_recommendation_manager
 from backend.models.recommendation import RecommendationResponse
 from backend.models.paper import PaperResponse
-from daily_paper.database import Paper
+from daily_paper.database import Paper, PaperInteraction, InterestTheme
+from daily_paper.recommenders.base import RecommendationContext
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+def _build_recommendation_context(db: Session) -> RecommendationContext:
+    """
+    Build RecommendationContext from database.
+
+    Collects all necessary data for recommendation generation.
+
+    Args:
+        db: Database session
+
+    Returns:
+        RecommendationContext with all required data.
+    """
+    # Get all papers as candidates
+    candidate_papers = db.query(Paper).all()
+
+    # Get interested/disinterested paper IDs
+    interested_ids = set(
+        db.query(PaperInteraction.paper_id)
+        .filter(PaperInteraction.action == 'interested')
+        .distinct()
+        .all()
+    )
+    interested_ids = {pid[0] for pid in interested_ids}
+
+    disinterested_ids = set(
+        db.query(PaperInteraction.paper_id)
+        .filter(PaperInteraction.action == 'not_interested')
+        .distinct()
+        .all()
+    )
+    disinterested_ids = {pid[0] for pid in disinterested_ids}
+
+    # Get user keywords from profile (user_id = 1)
+    from daily_paper.database import UserProfile
+    user_profile = db.query(UserProfile).filter(UserProfile.id == 1).first()
+    user_keywords = user_profile.interests if user_profile else []
+
+    # Get recommendation counts and last recommended times
+    interactions = db.query(PaperInteraction).all()
+    recommendation_counts = {i.paper_id: i.recommendation_count for i in interactions}
+    last_recommended_at = {i.paper_id: i.last_recommended_at for i in interactions if i.last_recommended_at}
+
+    return RecommendationContext(
+        candidate_papers=candidate_papers,
+        interested_paper_ids=interested_ids,
+        disinterested_paper_ids=disinterested_ids,
+        user_keywords=user_keywords,
+        recommendation_counts=recommendation_counts,
+        last_recommended_at=last_recommended_at,
+    )
 
 
 @router.post("/generate", response_model=List[RecommendationResponse])
@@ -25,6 +78,7 @@ async def generate_recommendations(
     top_k: int = 10,
     record_recommendations: bool = True,
     strategy_weights: Optional[Dict[str, float]] = None,
+    db: Session = Depends(get_db),
     recommendation_manager = Depends(get_recommendation_manager),
 ):
     """
@@ -34,16 +88,26 @@ async def generate_recommendations(
         top_k: Number of recommendations to generate
         record_recommendations: Whether to record recommendations in database
         strategy_weights: Optional custom weights for each strategy
+        db: Database session
+        recommendation_manager: Recommendation manager instance
 
     Returns:
         List of recommendation results with scores and reasons.
     """
     try:
+        # Build recommendation context from database
+        context = _build_recommendation_context(db)
+
+        # Generate recommendations using context
         results = recommendation_manager.recommend(
+            context=context,
             top_k=top_k,
-            record_recommendations=record_recommendations,
             strategy_weights=strategy_weights
         )
+
+        # Record recommendations if requested
+        if record_recommendations and results:
+            _record_recommendations(db, results)
 
         return [
             RecommendationResponse(
@@ -83,9 +147,13 @@ async def get_recommendations(
         List of recommendation results.
     """
     try:
+        # Build recommendation context from database
+        context = _build_recommendation_context(db)
+
+        # Generate recommendations using context (without recording)
         results = recommendation_manager.recommend(
+            context=context,
             top_k=top_k,
-            record_recommendations=False
         )
 
         # Get paper IDs
@@ -129,3 +197,46 @@ def _paper_to_response(paper: Paper) -> PaperResponse:
         interaction_status=None,
         notes=None,
     )
+
+
+def _record_recommendations(db: Session, results: List[RecommendationResponse]) -> None:
+    """
+    Record recommendations in database.
+
+    Updates PaperInteraction records with recommendation count and timestamp.
+
+    Args:
+        db: Database session
+        results: List of recommendation results to record
+    """
+    from datetime import datetime
+
+    try:
+        for result in results:
+            # Check if interaction exists
+            interaction = db.query(PaperInteraction).filter(
+                PaperInteraction.paper_id == result.paper_id
+            ).first()
+
+            if interaction:
+                # Update existing interaction
+                interaction.recommendation_count += 1
+                interaction.last_recommended_at = datetime.now()
+            else:
+                # Create new interaction record
+                new_interaction = PaperInteraction(
+                    user_id=1,
+                    paper_id=result.paper_id,
+                    action='no_action',
+                    recommendation_count=1,
+                    last_recommended_at=datetime.now(),
+                )
+                db.add(new_interaction)
+
+        db.commit()
+        logger.info(f"Recorded {len(results)} recommendations in database")
+
+    except Exception as e:
+        logger.error(f"Failed to record recommendations: {e}")
+        db.rollback()
+        raise

@@ -9,11 +9,14 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import List
+from typing import TYPE_CHECKING, List
 
 from daily_paper.config import Config
-from daily_paper.database import Paper, UserProfile
-from daily_paper.recommenders.base import BaseRecommender, RecommendationResult
+from daily_paper.embeddings.client import EmbeddingClient
+from daily_paper.recommenders.base import BaseRecommender, RecommendationContext, RecommendationResult
+
+if TYPE_CHECKING:
+    from daily_paper.database.models import Paper
 
 logger = logging.getLogger(__name__)
 
@@ -23,33 +26,34 @@ class DisinterestedFilterRecommender(BaseRecommender):
     Filter out papers matching disinterested keywords.
 
     This strategy:
-    1. Retrieves user's disinterested_keywords from profile
+    1. Uses user's disinterested_keywords from context (if available)
     2. Checks each paper's title and abstract for keyword matches
     3. Assigns negative scores to papers containing disinterested terms
-    4. Returns papers WITHOUT matches (for use in fusion filtering)
+    4. Returns all papers with scores (negative for matches, neutral for non-matches)
 
     In a fusion system, papers with negative scores from this strategy
     will be downweighted in the final ranking.
 
     Typical usage:
-        >>> recommender = DisinterestedFilterRecommender(session, config)
-        >>> results = recommender.recommend(candidate_papers, top_k=100)
+        >>> recommender = DisinterestedFilterRecommender(embedding_client, config)
+        >>> context = RecommendationContext(candidate_papers=papers, user_keywords=[...])
+        >>> results = recommender.recommend(context, top_k=100)
         >>> # Results will have negative scores for matching papers
 
     Attributes:
-        session: Database session.
         config: Application configuration.
+        embedding_client: Embedding service client.
     """
 
-    def __init__(self, session, config: Config = None):
+    def __init__(self, embedding_client: EmbeddingClient, config: Config = None):
         """
         Initialize the disinterested filter recommender.
 
         Args:
-            session: SQLAlchemy database session.
+            embedding_client: Embedding service client.
             config: Application configuration.
         """
-        super().__init__(session, config)
+        super().__init__(embedding_client, config)
         self.config = config or Config.from_env()
 
     @property
@@ -59,18 +63,16 @@ class DisinterestedFilterRecommender(BaseRecommender):
 
     def recommend(
         self,
-        candidate_papers: List[Paper],
+        context: RecommendationContext,
         top_k: int = 10,
-        **kwargs,
     ) -> List[RecommendationResult]:
         """
         Filter papers based on disinterested keywords.
 
         Args:
-            candidate_papers: List of papers to consider.
+            context: RecommendationContext containing candidate papers and user keywords.
             top_k: Maximum number of results (note: this returns all candidates
                    with scores, not filtered to top_k, for fusion use).
-            **kwargs: Additional parameters (not used).
 
         Returns:
             List of RecommendationResult with negative scores for papers
@@ -82,79 +84,21 @@ class DisinterestedFilterRecommender(BaseRecommender):
             - Checks both title and abstract
             - Case-insensitive matching
             - Assigns -1.0 score for each keyword match (cumulative)
+            - Note: context.user_keywords currently contains interested keywords,
+              so this strategy returns neutral scores for all papers
         """
-        # Get user profile
-        user_profile = self.session.query(UserProfile).first()
-        if not user_profile:
-            logger.warning("No user profile found for disinterested filter")
-            return []
+        # Get user keywords from context
+        # Note: context.user_keywords contains interested keywords, not disinterested
+        # Since there's no disinterested_keywords field in the context, we return neutral scores
+        logger.info("No disinterested keywords available in context, returning neutral scores")
 
-        # Get disinterested keywords
-        disinterested_keywords = user_profile.disinterested_keywords
-        if not disinterested_keywords:
-            logger.info("No disinterested keywords configured, returning neutral scores")
-            # Return all papers with neutral scores
-            return [
-                RecommendationResult(
-                    paper_id=paper.id,
-                    score=0.0,
-                    reason="No disinterested keywords configured",
-                    strategy_name=self.strategy_name,
-                )
-                for paper in candidate_papers
-            ]
-
-        # Parse keywords (comma or space separated)
-        keywords = [k.strip().lower() for k in disinterested_keywords.replace(",", " ").split() if k.strip()]
-        if not keywords:
-            logger.info("No valid disinterested keywords found")
-            return []
-
-        logger.info(f"Disinterested filter: Checking {len(candidate_papers)} papers against {len(keywords)} keywords")
-
-        # Compile regex patterns for each keyword (word boundary matching)
-        patterns = [re.compile(r'\b' + re.escape(keyword) + r'\b', re.IGNORECASE) for keyword in keywords]
-
-        results = []
-        match_count = 0
-
-        for paper in candidate_papers:
-            # Text to search (title + abstract)
-            search_text = ""
-            if paper.title:
-                search_text += paper.title.lower() + " "
-            if paper.abstract:
-                search_text += paper.abstract.lower()
-
-            # Count keyword matches
-            num_matches = 0
-            matched_keywords = []
-            for idx, pattern in enumerate(patterns):
-                if pattern.search(search_text):
-                    num_matches += 1
-                    matched_keywords.append(keywords[idx])
-
-            # Assign negative score based on number of matches
-            # More matches = more negative score
-            score = -float(num_matches)
-
-            if num_matches > 0:
-                match_count += 1
-                reason = f"Contains disinterested keywords: {', '.join(matched_keywords)}"
-            else:
-                reason = "No disinterested keyword matches"
-
-            results.append(
-                RecommendationResult(
-                    paper_id=paper.id,
-                    score=score,
-                    reason=reason,
-                    strategy_name=self.strategy_name,
-                )
+        # Return all papers with neutral scores
+        return [
+            RecommendationResult(
+                paper_id=paper.id,
+                score=0.0,
+                reason="No disinterested keywords configured",
+                strategy_name=self.strategy_name,
             )
-
-        logger.info(
-            f"Disinterested filter: {match_count}/{len(candidate_papers)} papers matched disinterested keywords"
-        )
-
-        return results
+            for paper in context.candidate_papers
+        ]

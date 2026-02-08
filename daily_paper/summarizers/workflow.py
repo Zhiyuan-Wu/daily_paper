@@ -14,14 +14,17 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
-from daily_paper.database import Paper, Session
 from daily_paper.parsers import PDFParser
 from daily_paper.summarizers.llm_client import LLMClient, LLMMessage
 from daily_paper.config import Config, LLMConfig
+
+if TYPE_CHECKING:
+    from daily_paper.database import Paper
 
 logger = logging.getLogger(__name__)
 
@@ -147,82 +150,42 @@ class SummaryStep(Enum):
 
     @staticmethod
     def _deep_research_prompt() -> str:
-        return """你是一位专业的科研论文深度分析师。请使用"5-why分析法"对论文的核心创新点进行深度研究，并使用中文输出：
+        return """你是一位专业的科研论文深度分析师。请对这篇论文进行深度研究分析，并使用中文输出。
 
-## 5-Why分析法框架
+## 分析框架
 
-5-why分析法是一种通过连续追问"为什么"来探究问题根本原因的深度分析方法。我们将从论文的核心创新点出发，进行5个层次的深度追问。
+请从以下几个维度对论文进行深度分析：
 
-### 第1个Why：根本问题（Why 1 - Root Problem）
-**问题：为什么需要这个核心创新？**
-- 这个创新要解决的根本问题是什么？
-- 这个问题为什么重要？有什么实际或理论价值？
-- 不解决这个问题会带来什么后果？
-- 这个问题在当前研究领域处于什么地位？
+### 核心问题与挑战
+- 这篇论文试图解决什么根本性问题？
+- 该问题的本质难点在哪里？为什么之前的研究难以解决？
+- 论文是否清晰地定义了问题边界和假设？
 
-### 第2个Why：技术机制（Why 2 - Technical Mechanism）
-**问题：这个创新的核心技术原理是什么？**
-- 该创新如何通过技术手段解决根本问题？
-- 核心技术机制是什么？如何运作？
-- 为什么这个技术机制能够有效解决问题？
-- 技术设计的关键洞察或突破点在哪里？
+### 技术创新与方法
+- 论文的核心创新点是什么？是算法、架构、还是新的问题建模方式？
+- 技术方法的关键设计思想是什么？
+- 与现有技术相比，这个方法的优势体现在哪里？
+- 方法的局限性是什么？
 
-### 第3个Why：有效性来源（Why 3 - Source of Effectiveness）
-**问题：为什么这个创新是有效的？**
-- 该创新能够取得效果的直接原因是什么？
-- 技术机制与问题解决之间的因果关系是什么？
-- 为什么比现有方法更有效？本质优势在哪里？
-- 理论保证或实证证据是什么？
+### 实验验证与结果
+- 论文如何验证方法的有效性？
+- 实验设计是否合理？是否充分？
+- 结果是否有力地支撑了论文的声明？
+- 有哪些潜在的偏差或 weaknesses？
 
-### 第4个Why：深层价值（Why 4 - Deep Value）
-**问题：这个创新的深层价值是什么？**
-- 该创新对研究领域带来了什么范式性影响？
-- 改变了人们对该问题的哪些认知或假设？
-- 开启了哪些新的研究方向或可能性？
-- 跨领域的借鉴价值和应用前景如何？
+### 深层价值与影响
+- 这项工作的核心贡献是什么？（不仅是什么，而是为什么重要）
+- 对该领域有什么长远影响？
+- 可能的未来研究方向是什么？
 
-### 第5个Why：长远意义（Why 5 - Long-term Significance）
-**问题：这个创新的长远意义是什么？**
-- 该创新在未来5-10年可能产生什么影响？
-- 可能催生什么样的后续工作或技术演进？
-- 对整个学科或相关产业的发展方向有何指引？
-- 是否具有成为经典方法或开创性工作的潜力？
+## 输出要求
+- 总字数：800-1000字
+- 每个部分都要有具体分析，避免空泛
+- 使用专业但清晰的语言
+- 适当引用论文中的具体内容（章节、算法、实验等）
+- 确保内容的准确性和深度
 
-## 输出格式
-
-```markdown
-# 深度研究
-
-## 核心创新点
-[1-2句话清晰界定论文的核心创新是什么]
-
-## 第1层追问：根本问题
-### 为什么需要这个创新？
-[回答根本问题的4个方面]
-
-## 第2层追问：技术机制
-### 核心技术原理是什么？
-[回答技术机制的4个方面]
-
-## 第3层追问：有效性来源
-### 为什么这个创新是有效的？
-[回答有效性的4个方面]
-
-## 第4层追问：深层价值
-### 这个创新的深层价值是什么？
-[回答深层价值的4个方面]
-
-## 第5层追问：长远意义
-### 这个创新的长远意义是什么？
-[回答长远意义的4个方面]
-```
-
-要求：
-- 每一层的追问都要深入到本质，避免表面化描述
-- 技术术语使用英文原文（首次出现时加中文注释）
-- 逻辑递进，层层深入，形成完整的分析链条
-- 每层回答控制在150-200字，总计800-1000字
-- 分析要有深度，展现对论文创新本质的深刻理解"""
+请基于论文全文进行深入分析。"""
 
     @staticmethod
     def _tldr_prompt() -> str:
@@ -424,7 +387,7 @@ class PaperSummarizer:
         self,
         paper: Paper,
         steps: Optional[List[SummaryStep]] = None,
-        save_to_db: bool = True,
+        save_to_db: bool = False,
     ) -> List[SummaryResult]:
         """
         Run the summarization workflow for a paper.
@@ -435,7 +398,9 @@ class PaperSummarizer:
         Args:
             paper: Paper record to summarize.
             steps: List of steps to execute. If None, runs new 3-step workflow.
-            save_to_db: Whether to save results to database.
+            save_to_db: DEPRECATED - This parameter is kept for backward
+                       compatibility but has no effect. Database operations
+                       are handled by the caller (service layer).
 
         Returns:
             List of SummaryResult objects, one per step.
@@ -522,44 +487,23 @@ class PaperSummarizer:
                     f"Step {step.display_name} failed: {result.error_message}"
                 )
 
-            # Save to database if requested and successful
-            if save_to_db and result.success:
-                from daily_paper.database import Summary
-
-                # Check for existing summary of this type
-                existing = (
-                    self._get_db_session()
-                    .query(Summary)
-                    .filter_by(paper_id=paper.id, summary_type=step.value)
-                    .first()
-                )
-
-                if existing:
-                    existing.content = result.content
-                else:
-                    new_summary = Summary(
-                        paper_id=paper.id,
-                        summary_type=step.value,
-                        content=result.content,
-                    )
-                    self._get_db_session().add(new_summary)
-
-                self._get_db_session().commit()
-
         return results
 
-    def _get_db_session(self) -> Session:
-        """Get or create database session."""
-        if not hasattr(self, "_db_session"):
-            from daily_paper.database import init_db
-
-            self._db_session = init_db(self.config.database.url)
-        return self._db_session
+    def _get_db_session(self):
+        """
+        DEPRECATED: Database access removed.
+        This method is kept for backward compatibility but does nothing.
+        """
+        logger.warning("_get_db_session() is deprecated and has no effect")
 
     def close(self) -> None:
-        """Close database session and clean up resources."""
-        if hasattr(self, "_db_session"):
-            self._db_session.close()
+        """
+        Close resources.
+
+        This method is kept for backward compatibility but does nothing
+        since database access has been removed.
+        """
+        pass
 
     def __enter__(self):
         """Context manager entry."""

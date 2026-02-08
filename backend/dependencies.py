@@ -43,34 +43,26 @@ def get_user_manager(db: Session = Depends(get_db)) -> UserManager:
     return UserManager(db)
 
 
-def get_recommendation_manager(
-    db: Session = Depends(get_db)
-) -> RecommendationManager:
+def get_recommendation_manager() -> RecommendationManager:
     """
     Get RecommendationManager instance.
-
-    Args:
-        db: Database session from dependency injection.
 
     Returns:
         RecommendationManager instance for the current request.
     """
     config = Config.from_env()
-    return RecommendationManager(config, db)
+    return RecommendationManager(config)
 
 
-def get_report_generator(db: Session = Depends(get_db)) -> ReportGenerator:
+def get_report_generator() -> ReportGenerator:
     """
     Get ReportGenerator instance.
-
-    Args:
-        db: Database session from dependency injection.
 
     Returns:
         ReportGenerator instance for the current request.
     """
     config = Config.from_env()
-    return ReportGenerator(config, db)
+    return ReportGenerator(config)
 
 
 def get_paper_summarizer() -> PaperSummarizer:

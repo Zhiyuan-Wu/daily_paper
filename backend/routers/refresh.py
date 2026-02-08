@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from backend.dependencies import get_db
 from daily_paper.config import Config
-from daily_paper.database import init_db, TaskHistory, TaskStep, SchedulerConfig
+from daily_paper.database import init_db, TaskHistory, TaskStep
 from daily_paper.manager import DownloadManager
 from daily_paper.parsers import PDFParser
 from daily_paper.summarizers.workflow import PaperSummarizer
@@ -25,56 +25,6 @@ from daily_paper.summarizers.llm_client import LLMClient
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-
-def calculate_next_run(schedule_type: str, daily_time: Optional[str] = None,
-                      weekly_day: Optional[int] = None, weekly_time: Optional[str] = None) -> Optional[datetime]:
-    """
-    Calculate the next scheduled run time based on configuration.
-
-    Args:
-        schedule_type: Type of schedule ('daily' or 'weekly')
-        daily_time: Time for daily schedule (HH:MM format)
-        weekly_day: Day of week for weekly schedule (0=Monday, 6=Sunday)
-        weekly_time: Time for weekly schedule (HH:MM format)
-
-    Returns:
-        Next run datetime, or None if configuration is invalid
-    """
-    now = datetime.now()
-
-    try:
-        if schedule_type == "daily" and daily_time:
-            # Parse daily time (HH:MM format)
-            hour, minute = map(int, daily_time.split(':'))
-            next_run = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-
-            # If time has passed today, schedule for tomorrow
-            if next_run <= now:
-                next_run += timedelta(days=1)
-
-            return next_run
-
-        elif schedule_type == "weekly" and weekly_day is not None and weekly_time:
-            # Parse weekly time (HH:MM format)
-            hour, minute = map(int, weekly_time.split(':'))
-            next_run = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
-
-            # Calculate days until next occurrence of weekly_day
-            current_weekday = now.weekday()  # 0=Monday, 6=Sunday
-            days_until = (weekly_day - current_weekday) % 7
-
-            # If today is the target day but time has passed, schedule for next week
-            if days_until == 0 and next_run <= now:
-                days_until = 7
-
-            next_run += timedelta(days=days_until)
-            return next_run
-
-    except (ValueError, AttributeError) as e:
-        logger.warning(f"Invalid scheduler configuration: {e}")
-
-    return None
 
 
 def create_task_step(session: Session, task_id: str, step_name: str) -> TaskStep:
@@ -199,77 +149,6 @@ async def get_task_detail(task_id: str, db: Session = Depends(get_db)):
     }
 
 
-@router.get("/scheduler")
-async def get_scheduler_status(db: Session = Depends(get_db)):
-    """Get current scheduler status and configuration."""
-    config = db.query(SchedulerConfig).first()
-
-    if not config:
-        # Create default config
-        config = SchedulerConfig(
-            id=1,
-            enabled=False,
-            schedule_type="daily",
-            daily_time="09:00"
-        )
-        db.add(config)
-        db.commit()
-        db.refresh(config)
-
-    return config.to_dict()
-
-
-@router.put("/scheduler")
-async def update_scheduler_config(
-    enabled: bool = None,
-    schedule_type: str = None,
-    daily_time: str = None,
-    weekly_day: int = None,
-    weekly_time: str = None,
-    db: Session = Depends(get_db)
-):
-    """
-    Update scheduler configuration.
-
-    Args:
-        enabled: Enable or disable the scheduler
-        schedule_type: Type of schedule ('daily' or 'weekly')
-        daily_time: Time for daily execution (HH:MM format)
-        weekly_day: Day of week for weekly execution (0=Monday, 6=Sunday)
-        weekly_time: Time for weekly execution (HH:MM format)
-    """
-    config = db.query(SchedulerConfig).first()
-
-    if not config:
-        config = SchedulerConfig(id=1)
-        db.add(config)
-
-    if enabled is not None:
-        config.enabled = enabled
-    if schedule_type is not None:
-        config.schedule_type = schedule_type
-    if daily_time is not None:
-        config.daily_time = daily_time
-    if weekly_day is not None:
-        config.weekly_day = weekly_day
-    if weekly_time is not None:
-        config.weekly_time = weekly_time
-
-    # Calculate next run time
-    config.next_run_at = calculate_next_run(
-        config.schedule_type,
-        config.daily_time,
-        config.weekly_day,
-        config.weekly_time
-    )
-
-    db.commit()
-    db.refresh(config)
-
-    logger.info(f"Scheduler config updated: {config}")
-    return config.to_dict()
-
-
 def _fetch_papers_task(
     task_id: str,
     parse: bool,
@@ -291,14 +170,38 @@ def _fetch_papers_task(
         task.started_at = datetime.now()
         session.commit()
 
-        # Step 1: Fetch paper metadata
+        # Step 1: Fetch paper metadata (using date range)
         metadata_step = create_task_step(session, task_id, "fetching_metadata")
         update_task_progress(session, task_id, "fetching_metadata", 5)
 
+        # Calculate date range based on fetch config
+        fetch_config = config.fetch
+        end_date = datetime.now().date()
+        start_date = end_date - timedelta(days=fetch_config.lookback_days)
+
+        logger.info(f"Fetching papers from {start_date} to {end_date}")
+
         manager = DownloadManager(config)
         papers = manager.fetch_papers_by_date(
-            target_date=datetime.now().date()
+            start_date=start_date,
+            end_date=end_date
         )
+
+        # If too few papers, expand the range
+        iteration = 0
+        max_iterations = 3
+        while len(papers) < fetch_config.min_papers and iteration < max_iterations:
+            logger.info(f"Only found {len(papers)} papers, expanding range...")
+            start_date = start_date - timedelta(days=fetch_config.lookback_days)
+            logger.info(f"Expanded range to {start_date} to {end_date}")
+
+            papers = manager.fetch_papers_by_date(
+                start_date=start_date,
+                end_date=end_date
+            )
+            iteration += 1
+
+        logger.info(f"Total papers found: {len(papers)} (date range: {start_date} to {end_date})")
 
         complete_task_step(session, metadata_step, success=True)
         update_task_progress(session, task_id, "fetching_metadata", 10, len(papers), 0)
@@ -388,12 +291,41 @@ def _fetch_papers_task(
             for paper in papers_with_pdfs:
                 if paper.text_path and not paper.has_summary:
                     try:
-                        results = summarizer.summarize_paper(paper)
+                        # Summarizer no longer saves to database - service layer handles it
+                        results = summarizer.summarize_paper(
+                            paper,
+                            save_to_db=False  # Not handled by summarizer anymore
+                        )
+
+                        # Service layer saves to database
                         if results:
+                            from daily_paper.database import Summary
+
+                            for result in results:
+                                if result.success:
+                                    # Check for existing summary
+                                    existing = (
+                                        session.query(Summary)
+                                        .filter_by(paper_id=paper.id, summary_type=result.step)
+                                        .first()
+                                    )
+
+                                    if existing:
+                                        existing.content = result.content
+                                    else:
+                                        new_summary = Summary(
+                                            paper_id=paper.id,
+                                            summary_type=result.step,
+                                            content=result.content,
+                                        )
+                                        session.add(new_summary)
+
+                            session.commit()
                             summarized_count += 1
                             logger.info(f"Summarized paper {paper.id}: {paper.title[:50]}")
                     except Exception as e:
                         logger.warning(f"Failed to summarize {paper.title}: {e}")
+                        session.rollback()
 
             complete_task_step(session, summarize_step, success=True)
             update_task_progress(session, task_id, "summarizing", 90, len(papers_with_pdfs), summarized_count)

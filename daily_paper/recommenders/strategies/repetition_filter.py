@@ -8,11 +8,14 @@ times without user interaction, preventing repetitive recommendations.
 from __future__ import annotations
 
 import logging
-from typing import List
+from typing import TYPE_CHECKING, List
 
 from daily_paper.config import Config
-from daily_paper.database import Paper, PaperInteraction
-from daily_paper.recommenders.base import BaseRecommender, RecommendationResult
+from daily_paper.embeddings.client import EmbeddingClient
+from daily_paper.recommenders.base import BaseRecommender, RecommendationContext, RecommendationResult
+
+if TYPE_CHECKING:
+    from daily_paper.database.models import Paper
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +25,7 @@ class RepetitionFilterRecommender(BaseRecommender):
     Downweight papers that have been recommended multiple times.
 
     This strategy:
-    1. Retrieves recommendation_count for each candidate paper
+    1. Retrieves recommendation_count for each candidate paper from context
     2. Applies downweight formula: score / (1 + factor * (count - 1))
     3. Excludes papers exceeding max_recommendations threshold
     4. Returns adjusted scores (can be used to modify other strategy scores)
@@ -31,27 +34,25 @@ class RepetitionFilterRecommender(BaseRecommender):
     effective. When used in fusion, it modifies the combined scores.
 
     Typical usage:
-        >>> # Use after getting scores from other strategies
-        >>> recommender = RepetitionFilterRecommender(session, config)
-        >>> adjusted = recommender.adjust_scores(base_results)
-        >>>
-        >>> # Or use standalone (returns neutral scores with metadata)
-        >>> results = recommender.recommend(candidate_papers, top_k=10)
+        >>> # Use standalone (returns neutral scores with metadata)
+        >>> recommender = RepetitionFilterRecommender(embedding_client, config)
+        >>> context = RecommendationContext(candidate_papers=papers, recommendation_counts={...})
+        >>> results = recommender.recommend(context, top_k=10)
 
     Attributes:
-        session: Database session.
         config: Application configuration.
+        embedding_client: Embedding service client.
     """
 
-    def __init__(self, session, config: Config = None):
+    def __init__(self, embedding_client: EmbeddingClient, config: Config = None):
         """
         Initialize the repetition filter recommender.
 
         Args:
-            session: SQLAlchemy database session.
+            embedding_client: Embedding service client.
             config: Application configuration.
         """
-        super().__init__(session, config)
+        super().__init__(embedding_client, config)
         self.config = config or Config.from_env()
 
     @property
@@ -61,17 +62,15 @@ class RepetitionFilterRecommender(BaseRecommender):
 
     def recommend(
         self,
-        candidate_papers: List[Paper],
+        context: RecommendationContext,
         top_k: int = 10,
-        **kwargs,
     ) -> List[RecommendationResult]:
         """
         Analyze recommendation counts and provide downweighting information.
 
         Args:
-            candidate_papers: List of papers to analyze.
+            context: RecommendationContext containing candidate papers and recommendation counts.
             top_k: Maximum number of results.
-            **kwargs: Additional parameters (downweight_factor, max_recommendations).
 
         Returns:
             List of RecommendationResult with scores representing the
@@ -79,36 +78,25 @@ class RepetitionFilterRecommender(BaseRecommender):
             Score formula: 1.0 / (1 + factor * (count - 1))
 
         Implementation details:
-            - Retrieves recommendation_count from PaperInteraction table
+            - Retrieves recommendation_count from context.recommendation_counts
             - Calculates downweight factor for each paper
             - Papers at max_recommendations get score of 0.0 (should be excluded)
             - Never-recommended papers get score of 1.0 (no downweighting)
         """
         # Get configuration
-        downweight_factor = kwargs.get("downweight_factor", self.config.recommendation.downweight_factor)
-        max_recommendations = kwargs.get("max_recommendations", self.config.recommendation.max_recommendations)
+        downweight_factor = self.config.recommendation.downweight_factor
+        max_recommendations = self.config.recommendation.max_recommendations
 
         logger.info(
-            f"Repetition filter: Analyzing {len(candidate_papers)} papers "
+            f"Repetition filter: Analyzing {len(context.candidate_papers)} papers "
             f"(factor={downweight_factor}, max={max_recommendations})"
         )
-
-        # Get recommendation counts for all candidate papers
-        paper_ids = [p.id for p in candidate_papers]
-        interactions = (
-            self.session.query(PaperInteraction.paper_id, PaperInteraction.recommendation_count)
-            .filter(PaperInteraction.paper_id.in_(paper_ids))
-            .all()
-        )
-
-        # Build count mapping
-        rec_counts = {paper_id: count for paper_id, count in interactions}
 
         results = []
         excluded_count = 0
 
-        for paper in candidate_papers:
-            count = rec_counts.get(paper.id, 0)
+        for paper in context.candidate_papers:
+            count = context.get_recommendation_count(paper.id)
 
             # Check if paper should be excluded
             if count >= max_recommendations:
@@ -149,62 +137,3 @@ class RepetitionFilterRecommender(BaseRecommender):
         )
 
         return results[:top_k]
-
-    def adjust_scores(
-        self,
-        base_results: List[RecommendationResult],
-        **kwargs,
-    ) -> List[RecommendationResult]:
-        """
-        Adjust recommendation scores using repetition downweighting.
-
-        This is a convenience method to apply repetition filtering to results
-        from other strategies.
-
-        Args:
-            base_results: Results from other strategies to adjust.
-            **kwargs: Additional parameters for downweight calculation.
-
-        Returns:
-            New RecommendationResult list with adjusted scores.
-
-        Examples:
-            >>> base_results = keyword_recommender.recommend(papers, top_k=10)
-            >>> adjusted = repetition_recommender.adjust_scores(base_results)
-            >>> # adjusted[i].score = base_results[i].score * downweight_factor
-        """
-        # Get paper IDs from base results
-        paper_ids = [r.paper_id for r in base_results]
-
-        # Get papers for these IDs
-        from daily_paper.database import Paper
-        papers = self.session.query(Paper).filter(Paper.id.in_(paper_ids)).all()
-        paper_map = {p.id: p for p in papers}
-
-        # Get downweight factors
-        downweight_results = self.recommend(papers, top_k=len(papers), **kwargs)
-        downweight_map = {r.paper_id: r.score for r in downweight_results}
-
-        # Apply downweighting
-        adjusted = []
-        for base_result in base_results:
-            downweight = downweight_map.get(base_result.paper_id, 1.0)
-
-            if downweight == 0.0:
-                # Paper should be excluded
-                continue
-
-            adjusted_score = base_result.score * downweight
-
-            adjusted.append(
-                RecommendationResult(
-                    paper_id=base_result.paper_id,
-                    score=adjusted_score,
-                    reason=f"{base_result.reason} | Downweight: {downweight:.3f}",
-                    strategy_name=base_result.strategy_name,
-                )
-            )
-
-        logger.info(f"Repetition filter: Adjusted {len(adjusted)} scores (excluded {len(base_results) - len(adjusted)})")
-
-        return adjusted

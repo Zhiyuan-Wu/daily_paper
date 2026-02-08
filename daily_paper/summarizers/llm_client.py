@@ -1,9 +1,7 @@
 """
-Configurable LLM client supporting OpenAI and Azure OpenAI.
+Configurable LLM client for OpenAI API.
 
-This module provides a unified interface for interacting with LLM providers.
-It supports both OpenAI and Azure OpenAI, with configuration determining
-which provider to use.
+This module provides a unified interface for interacting with OpenAI's API.
 """
 
 from __future__ import annotations
@@ -12,7 +10,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from openai import AzureOpenAI, OpenAI
+from openai import OpenAI
 
 from daily_paper.config import LLMConfig
 
@@ -56,10 +54,9 @@ class LLMMessage:
 
 class LLMClient:
     """
-    Configurable LLM client supporting OpenAI and Azure OpenAI.
+    Configurable LLM client for OpenAI API.
 
-    Provides a unified interface for chat completions across different
-    LLM providers. The provider is determined by configuration.
+    Provides a unified interface for chat completions using OpenAI's API.
 
     Typical usage:
         >>> config = LLMConfig.from_env()
@@ -72,7 +69,7 @@ class LLMClient:
 
     Attributes:
         config: LLM configuration.
-        client: OpenAI or Azure OpenAI client instance.
+        client: OpenAI client instance.
     """
 
     def __init__(self, config: Optional[LLMConfig] = None):
@@ -83,25 +80,16 @@ class LLMClient:
             config: LLM configuration. If None, loads from environment.
 
         Raises:
-            ValueError: If configuration is invalid or provider is unsupported.
+            ValueError: If configuration is invalid.
         """
         self.config = config or LLMConfig.from_env()
 
-        if self.config.provider == "azure":
-            self.client = AzureOpenAI(
-                api_key=self.config.api_key,
-                azure_endpoint=self.config.api_base,
-                api_version=self.config.api_version,
-            )
-        elif self.config.provider == "openai":
-            self.client = OpenAI(
-                api_key=self.config.api_key,
-                base_url=self.config.api_base,
-            )
-        else:
-            raise ValueError(f"Unsupported LLM provider: {self.config.provider}")
+        self.client = OpenAI(
+            api_key=self.config.api_key,
+            base_url=self.config.api_base,
+        )
 
-        logger.info(f"Initialized LLM client with provider: {self.config.provider}")
+        logger.info(f"Initialized LLM client with model: {self.config.model}")
 
     def chat(
         self,

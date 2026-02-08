@@ -8,14 +8,15 @@ the user has recently marked as interested.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
-from typing import List
+from typing import List, TYPE_CHECKING
 
 from daily_paper.config import Config
-from daily_paper.database import Paper, PaperInteraction
 from daily_paper.embeddings.client import EmbeddingClient
 from daily_paper.embeddings.utils import cosine_similarity
-from daily_paper.recommenders.base import BaseRecommender, RecommendationResult
+from daily_paper.recommenders.base import BaseRecommender, RecommendationContext, RecommendationResult
+
+if TYPE_CHECKING:
+    from daily_paper.database.models import Paper
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,7 @@ class InterestedSemanticRecommender(BaseRecommender):
     Recommend papers similar to recently interested papers.
 
     This strategy:
-    1. Retrieves papers marked as "interested" in the last N days
+    1. Uses papers marked as "interested" from context
     2. Calculates average semantic similarity between candidates and interested papers
     3. Returns candidates with highest average similarity
 
@@ -33,34 +34,34 @@ class InterestedSemanticRecommender(BaseRecommender):
     similar to what they've recently liked.
 
     Typical usage:
-        >>> recommender = InterestedSemanticRecommender(session, config, embedding_client)
-        >>> results = recommender.recommend(candidate_papers, top_k=10)
+        >>> recommender = InterestedSemanticRecommender(embedding_client, config)
+        >>> context = RecommendationContext(
+        ...     candidate_papers=papers,
+        ...     interested_paper_ids={1, 2, 3}
+        ... )
+        >>> results = recommender.recommend(context, top_k=10)
         >>> for result in results:
         ...     print(f"Paper {result.paper_id}: similarity={result.score:.3f}")
 
     Attributes:
-        session: Database session.
-        config: Application configuration.
         embedding_client: Embedding service client.
+        config: Application configuration.
     """
 
     def __init__(
         self,
-        session,
+        embedding_client: EmbeddingClient,
         config: Config = None,
-        embedding_client: EmbeddingClient = None,
     ):
         """
         Initialize the interested semantic recommender.
 
         Args:
-            session: SQLAlchemy database session.
-            config: Application configuration.
             embedding_client: Embedding service client.
+            config: Application configuration.
         """
-        super().__init__(session, config)
+        super().__init__(embedding_client, config)
         self.config = config or Config.from_env()
-        self.embedding_client = embedding_client or EmbeddingClient(self.config.embedding)
 
     @property
     def strategy_name(self) -> str:
@@ -69,67 +70,42 @@ class InterestedSemanticRecommender(BaseRecommender):
 
     def recommend(
         self,
-        candidate_papers: List[Paper],
+        context: RecommendationContext,
         top_k: int = 10,
-        **kwargs,
     ) -> List[RecommendationResult]:
         """
         Generate recommendations based on similarity to interested papers.
 
         Args:
-            candidate_papers: List of papers to consider.
+            context: RecommendationContext with interested paper IDs.
             top_k: Maximum number of recommendations to return.
-            **kwargs: Additional parameters (interested_days, min_similarity).
 
         Returns:
             List of RecommendationResult sorted by average similarity descending.
 
         Implementation details:
-            - Gets papers marked "interested" in last interested_days (default 30)
+            - Gets interested papers from context
             - Generates embeddings for interested papers and candidates
             - Calculates mean cosine similarity for each candidate
             - Filters candidates below minimum similarity threshold
         """
         # Get configuration
-        interested_days = kwargs.get("interested_days", self.config.recommendation.interested_days)
-        min_similarity = kwargs.get("min_similarity", self.config.recommendation.min_similarity)
+        min_similarity = self.config.recommendation.min_similarity
 
-        # Get recently interested papers
-        cutoff_date = datetime.now() - timedelta(days=interested_days)
-
-        interested_interactions = (
-            self.session.query(PaperInteraction)
-            .filter(
-                PaperInteraction.action == "interested",
-                PaperInteraction.created_at >= cutoff_date,
-            )
-            .all()
-        )
-
-        if not interested_interactions:
-            logger.info(f"No interested papers in last {interested_days} days")
-            return []
-
-        interested_paper_ids = [i.paper_id for i in interested_interactions]
-
-        # Get interested papers
-        interested_papers = (
-            self.session.query(Paper)
-            .filter(Paper.id.in_(interested_paper_ids))
-            .all()
-        )
+        # Get interested papers from context
+        interested_papers = context.get_interested_papers()
 
         if not interested_papers:
-            logger.warning("Found interested interactions but no papers")
+            logger.info("No interested papers provided in context")
             return []
 
         logger.info(
-            f"Interested semantic: Found {len(interested_papers)} interested papers "
-            f"in last {interested_days} days, analyzing {len(candidate_papers)} candidates"
+            f"Interested semantic: Found {len(interested_papers)} interested papers, "
+            f"analyzing {len(context.candidate_papers)} candidates"
         )
 
         # Filter out read papers
-        papers = self._filter_read_papers(candidate_papers)
+        papers = self._filter_read_papers(context)
         if not papers:
             logger.warning("No papers after filtering read papers")
             return []

@@ -105,20 +105,29 @@ class BaseDownloader(ABC):
     """
 
     @abstractmethod
-    def get_papers_by_date(self, target_date: date) -> List[PaperMetadata]:
+    def get_papers_by_date(
+        self,
+        target_date: Optional[date] = None,
+        start_date: Optional[date] = None,
+        end_date: Optional[date] = None
+    ) -> List[PaperMetadata]:
         """
-        Fetch papers published on a specific date.
+        Fetch papers for a date or date range.
 
-        Implementations should query their respective paper sources and
-        return a list of papers published on the given date. If the source
-        doesn't support precise date filtering, implementations should
-        return papers from a reasonable time window.
+        Supports both single date (backward compatible) and date range queries.
+        Implementations should query their respective paper sources and return
+        papers matching the date criteria.
 
         Args:
-            target_date: The date to fetch papers for.
+            target_date: Single date to fetch (backward compatible).
+            start_date: Start of date range (inclusive). Used with end_date.
+            end_date: End of date range (inclusive). Used with start_date.
 
         Returns:
-            List of PaperMetadata objects for papers from the target date.
+            List of PaperMetadata objects for papers in the specified range.
+
+        Raises:
+            ValueError: If neither target_date nor both start_date/end_date are provided.
         """
         pass
 
