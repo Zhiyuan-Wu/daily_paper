@@ -211,6 +211,6 @@ class RecommendationManager:
 
         logger.info(
             f"Recommendation generation complete: {len(fused)} recommendations, "
-            f"top_score={fused[0].score:.4f if fused else 0:.4f}"
+            f"top_score={(fused[0].score if fused else 0):.4f}"
         )
         return fused

@@ -304,7 +304,30 @@ def _summarize_paper_task(
         task_status[task_id]["progress"] = 30
 
         # Run summarization
-        results = summarizer.summarize_paper(paper, save_to_db=True)
+        results = summarizer.summarize_paper(paper)
+
+        # Save summaries to database
+        saved_count = 0
+        for result in results:
+            if result.success:
+                # Check for existing summary
+                existing = db.query(Summary).filter_by(
+                    paper_id=paper_id,
+                    summary_type=result.step.value
+                ).first()
+
+                if existing:
+                    existing.content = result.content
+                else:
+                    new_summary = Summary(
+                        paper_id=paper_id,
+                        summary_type=result.step.value,
+                        content=result.content,
+                    )
+                    db.add(new_summary)
+                saved_count += 1
+
+        db.commit()
 
         task_status[task_id]["progress"] = 90
 
@@ -312,13 +335,14 @@ def _summarize_paper_task(
         task_status[task_id] = {
             "status": "completed",
             "progress": 100,
-            "summary_count": len([r for r in results if r.success])
+            "summary_count": saved_count
         }
 
-        logger.info(f"Summarization completed for paper {paper_id}: {len(results)} steps")
+        logger.info(f"Summarization completed for paper {paper_id}: {saved_count} steps saved to database")
 
     except Exception as e:
         logger.error(f"Summarization failed for paper {paper_id}: {e}")
+        db.rollback()
         task_status[task_id] = {
             "status": "failed",
             "error": str(e)
