@@ -8,6 +8,10 @@ doc
 .python-version
 .DS_Store
 test_*
+!tests_v2/
+!tests_v2/test_v2_e2e.py
+!tests_v2/test_v2_live_real_data.py
+!tests_v2/test_v2_research_sources_parsing.py
 frontend/node_modules
 frontend/dist
 frontend/build

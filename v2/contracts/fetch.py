@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 
 class SearchRequest(BaseModel):
-    sources: list[str] = Field(default_factory=lambda: ["openalex"])
+    sources: list[str] = Field(default_factory=lambda: ["arxiv", "huggingface"])
     keywords: list[str] = Field(default_factory=list)
     start_date: Optional[date] = None
     end_date: Optional[date] = None

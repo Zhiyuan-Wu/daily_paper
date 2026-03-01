@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from v2.config import V2Config
 from v2.contracts.fetch import DownloadRequest
@@ -12,6 +13,8 @@ from v2.services.analyze.service import AnalyzeService
 from v2.services.fetch.service import FetchService
 from v2.services.parse.service import ParseService
 from v2.services.recommend.service import RecommendService
+
+logger = logging.getLogger(__name__)
 
 
 class DailyReportService:
@@ -23,52 +26,55 @@ class DailyReportService:
         self.analyze_service = AnalyzeService(repo)
         self.recommend_service = RecommendService(repo)
 
-    def generate(self, report_date: datetime, sources: list[str], keywords: list[str], top_k: int) -> dict:
+    def generate(
+        self,
+        report_date: datetime,
+        sources: list[str],
+        keywords: list[str],
+        top_k: int,
+        window_days: int = 1,
+        arxiv_categories: list[str] | None = None,
+    ) -> dict:
+        lookback_days = max(1, int(window_days))
+        start_date = report_date.date() - timedelta(days=lookback_days - 1)
+
         # Step 1: fetch
-        papers = self.fetch_service.search(sources=sources, keywords=keywords, start_date=None, end_date=None, page=1, page_size=top_k * 3)
+        papers = self.fetch_service.search(
+            sources=sources,
+            keywords=keywords,
+            start_date=start_date.isoformat(),
+            end_date=report_date.date().isoformat(),
+            page=1,
+            page_size=top_k * 3,
+            arxiv_categories=arxiv_categories,
+        )
         saved = self.fetch_service.save_search_items(papers)
         if not saved:
             raise RuntimeError("REPORT_FETCH_EMPTY")
 
-        # Step 2: parse (must fail if parse fails)
-        parsed_uids: list[str] = []
-        for p in saved[: top_k * 2]:
-            if p.get("pdf_unavailable"):
-                continue
-            download_out = self.fetch_service.download(
-                req=DownloadRequest(
-                    source=p["source"],
-                    external_id=p["external_id"],
-                    pdf_url=p.get("pdf_url"),
-                )
-            )
-            if download_out.get("pdf_unavailable"):
-                continue
-            parse_out = self.parse_service.parse(download_out["paper_uid"], "simple", False)
-            parsed_uids.append(parse_out["paper_uid"])
+        candidate_uids = [p["paper_uid"] for p in saved]
 
-        if not parsed_uids:
-            raise RuntimeError("REPORT_PARSE_EMPTY")
-
-        # Step 3: analyze
-        for uid in parsed_uids:
-            text_artifact = self.repo.get_artifact(uid, "text", parser_method="simple")
-            paper = self.repo.get_paper(uid)
-            if not text_artifact or not paper:
-                raise RuntimeError("REPORT_ANALYZE_INPUT_MISSING")
-            text = open(text_artifact.path, "r", encoding="utf-8").read()
-            self.analyze_service.analyze(uid, paper.title, text, paper.abstract)
-
-        # Step 4: recommend
-        rec = self.recommend_service.recommend(parsed_uids, top_k)
+        # Step 2: recommend from metadata + feedback first, then enrich top papers lazily.
+        rec = self.recommend_service.recommend(candidate_uids, top_k)
         if not rec["items"]:
             raise RuntimeError("REPORT_RECOMMEND_EMPTY")
 
-        # Step 5: summarize (single provider from env; here deterministic format)
+        enrich_status: dict[str, str] = {}
+        row_by_uid = {row["paper_uid"]: row for row in saved}
+        for item in rec["items"]:
+            uid = item["paper_uid"]
+            row = row_by_uid.get(uid)
+            if not row:
+                enrich_status[uid] = "metadata_only"
+                continue
+            enrich_status[uid] = self._ensure_analysis_for_row(row)
+
+        # Step 3: summarize (single provider from env; here deterministic format)
         summary_lines = [f"# Daily Report ({report_date.date().isoformat()})", "", "## Top Recommendations"]
         for item in rec["items"]:
             paper = self.repo.get_paper(item["paper_uid"])
-            summary_lines.append(f"- {paper.title if paper else item['paper_uid']} (score={item['score']})")
+            status = enrich_status.get(item["paper_uid"], "metadata_only")
+            summary_lines.append(f"- {paper.title if paper else item['paper_uid']} (score={item['score']}, enrich={status})")
         summary_md = "\n".join(summary_lines)
 
         report_id = uuid.uuid4().hex
@@ -78,7 +84,14 @@ class DailyReportService:
                 report_date=report_date,
                 timezone=self.config.timezone,
                 summary_md=summary_md,
-                meta_json=json.dumps({"sources": sources, "keywords": keywords}),
+                meta_json=json.dumps(
+                    {
+                        "sources": sources,
+                        "keywords": keywords,
+                        "window_days": lookback_days,
+                        "arxiv_categories": arxiv_categories or [],
+                    }
+                ),
             )
         )
         for row in rec["items"]:
@@ -99,3 +112,30 @@ class DailyReportService:
             "summary_md": summary_md,
             "paper_uids": [x["paper_uid"] for x in rec["items"]],
         }
+
+    def _ensure_analysis_for_row(self, row: dict) -> str:
+        paper_uid = row["paper_uid"]
+        latest = self.repo.latest_analysis(paper_uid)
+        if latest:
+            return "analysis_cached"
+        try:
+            download_out = self.fetch_service.download(
+                req=DownloadRequest(
+                    source=row["source"],
+                    external_id=row["external_id"],
+                    pdf_url=row.get("pdf_url"),
+                )
+            )
+            if download_out.get("pdf_unavailable"):
+                return "pdf_unavailable"
+
+            parse_out = self.parse_service.parse(download_out["paper_uid"], "simple", False)
+            text = open(parse_out["text_path"], "r", encoding="utf-8").read()
+            paper = self.repo.get_paper(paper_uid)
+            if not paper:
+                return "paper_missing"
+            self.analyze_service.analyze(paper_uid, paper.title, text, paper.abstract)
+            return "analysis_generated"
+        except Exception:
+            logger.exception("Lazy enrichment failed in daily report for paper_uid=%s", paper_uid)
+            return "enrich_failed"

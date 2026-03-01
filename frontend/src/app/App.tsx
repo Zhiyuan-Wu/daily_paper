@@ -1,34 +1,50 @@
-import { Layout, Menu } from "antd";
+import type { ReactNode } from "react";
+import { BookOutlined, FileSearchOutlined, SearchOutlined, SettingOutlined } from "@ant-design/icons";
+import { Layout, Menu, Typography } from "antd";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
-const { Header, Content } = Layout;
+const { Sider, Content } = Layout;
+const { Title, Text } = Typography;
 
 export function AppLayout() {
   const nav = useNavigate();
   const loc = useLocation();
+  const selectedKey = loc.pathname === "/" ? "/reports" : loc.pathname;
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
-      <Header style={{ display: "flex", alignItems: "center" }}>
-        <div style={{ color: "#fff", marginRight: 24, fontWeight: 700 }}>Daily Paper V2</div>
+      <Sider breakpoint="lg" collapsedWidth={56} width={220} theme="light">
+        <div style={{ padding: "20px 16px 12px" }}>
+          <Title level={4} style={{ margin: 0 }}>
+            Daily Paper
+          </Title>
+          <Text type="secondary">论文助手</Text>
+        </div>
         <Menu
-          theme="dark"
-          mode="horizontal"
-          selectedKeys={[loc.pathname]}
+          mode="inline"
+          selectedKeys={[selectedKey]}
           onClick={(e) => nav(e.key)}
           items={[
-            { key: "/", label: "论文探索" },
-            { key: "/recommendations", label: "推荐" },
-            { key: "/research", label: "调研" },
             { key: "/reports", label: "日报" },
-            { key: "/tasks", label: "任务" },
+            { key: "/papers", label: "论文探索" },
+            { key: "/research", label: "深度调研" },
             { key: "/settings", label: "设置" }
-          ]}
+          ].map((item) => {
+            const iconMap: Record<string, ReactNode> = {
+              "/reports": <BookOutlined />,
+              "/papers": <FileSearchOutlined />,
+              "/research": <SearchOutlined />,
+              "/settings": <SettingOutlined />
+            };
+            return { ...item, icon: iconMap[item.key] };
+          })}
         />
-      </Header>
-      <Content style={{ padding: 24 }}>
-        <Outlet />
-      </Content>
+      </Sider>
+      <Layout>
+        <Content style={{ padding: 20 }}>
+          <Outlet />
+        </Content>
+      </Layout>
     </Layout>
   );
 }

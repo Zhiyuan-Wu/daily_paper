@@ -17,6 +17,11 @@ class SettingsRuntime:
             "interest_keywords": json.loads(p.interest_keywords_json),
             "excluded_keywords": json.loads(p.excluded_keywords_json),
             "default_sources": json.loads(p.default_sources_json),
+            "daily_report_sources": json.loads(p.daily_report_sources_json),
+            "daily_report_keywords": json.loads(p.daily_report_keywords_json),
+            "daily_report_arxiv_categories": json.loads(p.daily_report_arxiv_categories_json),
+            "daily_report_top_k": p.daily_report_top_k,
+            "daily_report_window_days": p.daily_report_window_days,
             "recommend_strategy_weights": json.loads(p.recommend_strategy_weights_json),
             "scholar_provider": p.scholar_provider,
             "scholar_rate_limit_rps": p.scholar_rate_limit_rps,
@@ -39,6 +44,16 @@ class SettingsRuntime:
             p.excluded_keywords_json = json.dumps(payload["excluded_keywords"], ensure_ascii=False)
         if "default_sources" in payload:
             p.default_sources_json = json.dumps(payload["default_sources"], ensure_ascii=False)
+        if "daily_report_sources" in payload:
+            p.daily_report_sources_json = json.dumps(payload["daily_report_sources"], ensure_ascii=False)
+        if "daily_report_keywords" in payload:
+            p.daily_report_keywords_json = json.dumps(payload["daily_report_keywords"], ensure_ascii=False)
+        if "daily_report_arxiv_categories" in payload:
+            p.daily_report_arxiv_categories_json = json.dumps(payload["daily_report_arxiv_categories"], ensure_ascii=False)
+        if "daily_report_top_k" in payload:
+            p.daily_report_top_k = int(payload["daily_report_top_k"])
+        if "daily_report_window_days" in payload:
+            p.daily_report_window_days = int(payload["daily_report_window_days"])
         if "recommend_strategy_weights" in payload:
             p.recommend_strategy_weights_json = json.dumps(payload["recommend_strategy_weights"], ensure_ascii=False)
         if "scholar_rate_limit_rps" in payload:

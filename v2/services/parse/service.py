@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from pathlib import Path
 
@@ -9,6 +10,8 @@ import requests
 from v2.config import V2Config
 from v2.db.repo import Repo
 from v2.foundation.artifact_manager import ArtifactManager
+
+logger = logging.getLogger(__name__)
 
 
 class ParseService:
@@ -65,30 +68,38 @@ class ParseService:
         }
 
     def _parse_simple(self, pdf_path: Path) -> str:
-        doc = fitz.open(str(pdf_path))
-        texts = [page.get_text() for page in doc]
-        doc.close()
-        text = "\n\n".join(t.strip() for t in texts if t)
-        if not text.strip():
-            raise RuntimeError("PARSE_EXEC_FAILED")
-        return text
+        try:
+            doc = fitz.open(str(pdf_path))
+            texts = [page.get_text() for page in doc]
+            doc.close()
+            text = "\n\n".join(t.strip() for t in texts if t)
+            if not text.strip():
+                raise RuntimeError("PARSE_EXEC_FAILED")
+            return text
+        except Exception:
+            logger.exception("Simple parse failed for pdf=%s", pdf_path)
+            raise
 
     def _parse_ocr(self, pdf_path: Path) -> str:
         ocr_url = self._ocr_url()
         if not ocr_url:
             raise RuntimeError("PARSE_EXEC_FAILED")
         with pdf_path.open("rb") as f:
-            response = requests.post(
-                ocr_url,
-                files={"file": f},
-                timeout=self.config.ocr_timeout_seconds,
-            )
-        response.raise_for_status()
-        payload = response.json()
-        text = payload.get("text", "")
-        if not text:
-            raise RuntimeError("PARSE_EXEC_FAILED")
-        return text
+            try:
+                response = requests.post(
+                    ocr_url,
+                    files={"file": f},
+                    timeout=self.config.ocr_timeout_seconds,
+                )
+                response.raise_for_status()
+                payload = response.json()
+                text = payload.get("text", "")
+                if not text:
+                    raise RuntimeError("PARSE_EXEC_FAILED")
+                return text
+            except Exception:
+                logger.exception("OCR parse failed for pdf=%s", pdf_path)
+                raise
 
     @staticmethod
     def _ocr_url() -> str | None:

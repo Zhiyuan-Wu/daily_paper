@@ -84,11 +84,15 @@ class RecommendService:
         if any(k.lower() in corpus for k in excluded_keywords):
             llm_theme *= 0.2
 
+        # New-paper preference: lower score as recommendation count increases.
+        recommended_inverse = 1.0 / (1.0 + max(0, int(paper.recommended_count or 0)))
+
         return {
             "keyword_semantic": float(keyword_semantic),
             "interested_semantic": float(interested_semantic),
             "repetition_penalty": float(repetition_penalty),
             "llm_theme": float(min(1.0, llm_theme)),
+            "recommended_inverse": float(recommended_inverse),
         }
 
     @staticmethod
@@ -98,6 +102,8 @@ class RecommendService:
             reasons.append("Matches configured interest keywords")
         if breakdown["repetition_penalty"] < 0.5:
             reasons.append("Demoted by prior negative feedback")
+        if breakdown.get("recommended_inverse", 1.0) < 0.5:
+            reasons.append("Downranked due to frequent prior recommendations")
         if pdf_unavailable:
             reasons.append("No downloadable PDF; score penalized")
         if not reasons:

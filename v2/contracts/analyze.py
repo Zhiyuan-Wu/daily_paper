@@ -5,8 +5,8 @@ from pydantic import BaseModel, Field
 
 class AnalyzeRequest(BaseModel):
     paper_uid: str
-    full_text: str
-    title: str
+    full_text: str | None = None
+    title: str | None = None
     abstract: str | None = None
 
 

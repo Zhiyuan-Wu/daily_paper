@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import re
 import shutil
 import subprocess
 import uuid
@@ -11,6 +13,8 @@ from pathlib import Path
 from v2.config import V2Config
 from v2.db.models import ResearchReport, ResearchTask
 from v2.db.repo import Repo
+
+logger = logging.getLogger(__name__)
 
 
 class ResearchService:
@@ -50,7 +54,7 @@ class ResearchService:
                 sources_file.write_text("[]", encoding="utf-8")
 
             report_md = report_file.read_text(encoding="utf-8")
-            sources = json.loads(sources_file.read_text(encoding="utf-8") or "[]")
+            sources = self._read_sources_file(sources_file)
             sources = self._normalize_sources(sources)
 
             self.repo.session.add(
@@ -68,6 +72,7 @@ class ResearchService:
             self._cleanup_workdir(task_id, workdir)
             return {"task_id": task_id, "status": "completed"}
         except Exception as e:
+            logger.exception("Research task failed task_id=%s topic=%s", task_id, topic)
             task.status = "failed"
             task.error_message = str(e)
             task.finished_at = datetime.now()
@@ -124,9 +129,13 @@ class ResearchService:
         timeout = self.config.research_timeout_minutes * 60
         subprocess.run(cmd, cwd=str(workdir), check=True, timeout=timeout)
 
-    def _normalize_sources(self, sources: list[dict]) -> list[dict]:
+    def _normalize_sources(self, sources: list[object]) -> list[dict]:
         normalized = []
         for src in sources:
+            if isinstance(src, str):
+                src = {"title": src}
+            elif not isinstance(src, dict):
+                src = {}
             normalized.append(
                 {
                     "title": str(src.get("title", "")),
@@ -137,6 +146,43 @@ class ResearchService:
                 }
             )
         return normalized
+
+    @staticmethod
+    def _coerce_source_list(payload: object) -> list[object]:
+        if isinstance(payload, list):
+            return payload
+        if isinstance(payload, dict):
+            for key in ("sources", "items", "references"):
+                value = payload.get(key)
+                if isinstance(value, list):
+                    return value
+            if {"title", "url", "source", "published_at", "evidence_snippet"}.intersection(payload.keys()):
+                return [payload]
+            return []
+        if isinstance(payload, str):
+            return [payload]
+        return []
+
+    def _read_sources_file(self, sources_file: Path) -> list[object]:
+        raw = sources_file.read_text(encoding="utf-8").strip()
+        if not raw:
+            return []
+
+        try:
+            payload = json.loads(raw)
+            return self._coerce_source_list(payload)
+        except json.JSONDecodeError:
+            pass
+
+        # Handle markdown-style outputs with fenced JSON blocks.
+        match = re.search(r"```json\s*(.*?)\s*```", raw, flags=re.DOTALL | re.IGNORECASE)
+        if not match:
+            return []
+        try:
+            payload = json.loads(match.group(1))
+        except json.JSONDecodeError:
+            return []
+        return self._coerce_source_list(payload)
 
     def _cleanup_workdir(self, task_id: str, workdir: Path) -> None:
         try:

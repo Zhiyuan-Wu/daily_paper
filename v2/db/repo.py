@@ -146,6 +146,9 @@ class Repo:
                     reasons_json=json.dumps(item["reasons"], ensure_ascii=False),
                 )
             )
+            paper = self.session.query(Paper).filter(Paper.paper_uid == item["paper_uid"]).first()
+            if paper is not None:
+                paper.recommended_count = int(paper.recommended_count or 0) + 1
         self.session.commit()
 
     def create_job(self, job_type: str, payload: dict, trace_id: str) -> Job:

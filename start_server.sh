@@ -100,7 +100,7 @@ start_frontend() {
 
   (
     cd "$FRONTEND_DIR"
-    nohup "$NPM_BIN" run dev -- --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" \
+    VITE_API_PORT="$BACKEND_PORT" nohup "$NPM_BIN" run dev -- --host "$FRONTEND_HOST" --port "$FRONTEND_PORT" \
       > "$FRONTEND_LOG_FILE" 2>&1 &
     echo $! > "$FRONTEND_PID_FILE"
   )
