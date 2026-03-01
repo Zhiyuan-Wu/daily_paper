@@ -2,19 +2,22 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **Repository status (2026-03-01):** Legacy implementation has been removed.  
+> Authoritative runtime/docs are `v2/`, `frontend/`, `tests_v2/`, `docs/V2_RUNBOOK.md`, `docs/V2_DELIVERY.md`.
+
 ## Project Overview
 
-Daily Paper is an automated research paper recommendation and summarization system. It fetches papers from arXiv and HuggingFace, generates LLM-based summaries, and provides personalized recommendations based on user interests.
+Daily Paper is an automated paper management and assisted-learning system. Current implementation is V2 layered architecture with independent stateless services (fetch/parse/analyze/recommend/research/daily_report), API orchestration, and React frontend.
 
 ## Development Commands
 
 ### Running the Application
 ```bash
-# Start the FastAPI server (serves both API and frontend at http://localhost:8000)
+# Start backend + frontend (defaults: backend 8011, frontend 5183)
 ./start_server.sh
 
-# Or directly with uvicorn
-python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+# Or backend only
+./scripts/run_v2_api.sh
 ```
 
 ### Testing
