@@ -13,6 +13,7 @@ class StrategyBreakdown(BaseModel):
     interested_semantic: float = 0.0
     repetition_penalty: float = 0.0
     llm_theme: float = 0.0
+    recommended_inverse: float = 0.0
 
 
 class RecommendationItem(BaseModel):

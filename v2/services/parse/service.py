@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import logging
-import uuid
 from pathlib import Path
+from typing import Optional
 
 import fitz
 import requests
@@ -47,7 +47,6 @@ class ParseService:
         text_path = self.artifacts.text_path(paper_uid, method)
         info = self.artifacts.write_text(text_path, text)
         self.repo.upsert_artifact(
-            artifact_id=uuid.uuid4().hex,
             payload={
                 "paper_uid": paper_uid,
                 "artifact_type": "text",
@@ -84,12 +83,13 @@ class ParseService:
         ocr_url = self._ocr_url()
         if not ocr_url:
             raise RuntimeError("PARSE_EXEC_FAILED")
+        timeout = self.repo.ensure_profile().ocr_timeout_seconds
         with pdf_path.open("rb") as f:
             try:
                 response = requests.post(
                     ocr_url,
                     files={"file": f},
-                    timeout=self.config.ocr_timeout_seconds,
+                    timeout=timeout,
                 )
                 response.raise_for_status()
                 payload = response.json()
@@ -102,7 +102,7 @@ class ParseService:
                 raise
 
     @staticmethod
-    def _ocr_url() -> str | None:
+    def _ocr_url() -> Optional[str]:
         import os
 
         return os.getenv("OCR_SERVICE_URL")

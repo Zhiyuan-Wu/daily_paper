@@ -69,9 +69,9 @@ def test_frontend_dashboard_related_endpoints(tmp_path: Path, monkeypatch):
     assert status_payload["service_health"]["database"] is True
 
     monkeypatch.setattr(
-        mod.fetch_service,
+        mod.FetchService,
         "validate_sources",
-        lambda **kwargs: {
+        lambda self, **kwargs: {
             "arxiv": {"ok": True, "reason": "", "count": 3, "sample_external_id": "1234.5678"},
             "huggingface": {"ok": False, "reason": "NO_REAL_DATA", "count": 0},
             "openalex": {"ok": True, "reason": "", "count": 2, "sample_external_id": "W123"},

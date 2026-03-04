@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any, Optional
 
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, create_engine
-from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, relationship, sessionmaker
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, create_engine
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 
 class Base(DeclarativeBase):
@@ -42,13 +44,13 @@ class Paper(Base):
     paper_uid: Mapped[str] = mapped_column(String(64), primary_key=True)
     source: Mapped[str] = mapped_column(String(64), index=True)
     external_id: Mapped[str] = mapped_column(String(256), index=True)
-    doi: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    doi: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
     title: Mapped[str] = mapped_column(String(2000))
     authors_json: Mapped[str] = mapped_column(Text, default="[]")
-    abstract: Mapped[str | None] = mapped_column(Text, nullable=True)
-    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    source_url: Mapped[str | None] = mapped_column(String(2000), nullable=True)
-    pdf_url: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    abstract: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    published_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    source_url: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
+    pdf_url: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
     pdf_unavailable: Mapped[bool] = mapped_column(Boolean, default=False)
     recommended_count: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now())
@@ -63,8 +65,8 @@ class PaperSourceLink(Base):
     paper_uid: Mapped[str] = mapped_column(ForeignKey("papers.paper_uid"), index=True)
     source: Mapped[str] = mapped_column(String(64), index=True)
     external_id: Mapped[str] = mapped_column(String(256), index=True)
-    doi: Mapped[str | None] = mapped_column(String(256), nullable=True)
-    source_url: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    doi: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    source_url: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now())
 
     __table_args__ = (UniqueConstraint("source", "external_id", name="uniq_source_link"),)
@@ -79,11 +81,22 @@ class PaperArtifact(Base):
     path: Mapped[str] = mapped_column(String(2000))
     file_hash: Mapped[str] = mapped_column(String(128), index=True)
     size_bytes: Mapped[int] = mapped_column(Integer, default=0)
-    parser_method: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    parser_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    parser_method: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    parser_version: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
     evicted: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
     last_accessed_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now())
+
+    __table_args__ = (
+        UniqueConstraint(
+            "paper_uid",
+            "artifact_type",
+            "parser_method",
+            "parser_version",
+            "evicted",
+            name="uniq_artifact_active_key",
+        ),
+    )
 
 
 class PaperAnalysis(Base):
@@ -102,7 +115,7 @@ class PaperFeedback(Base):
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     paper_uid: Mapped[str] = mapped_column(ForeignKey("papers.paper_uid"), index=True)
     action: Mapped[str] = mapped_column(String(32), index=True)
-    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    note: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(), index=True)
 
 
@@ -158,10 +171,10 @@ class ResearchTask(Base):
     status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
     workdir_path: Mapped[str] = mapped_column(String(2000))
     task_file_path: Mapped[str] = mapped_column(String(2000))
-    report_file_path: Mapped[str | None] = mapped_column(String(2000), nullable=True)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    report_file_path: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
 
 class ResearchReport(Base):
@@ -182,9 +195,9 @@ class Job(Base):
     payload_json: Mapped[str] = mapped_column(Text, default="{}")
     status: Mapped[str] = mapped_column(String(32), default="pending", index=True)
     progress: Mapped[int] = mapped_column(Integer, default=0)
-    result_ref: Mapped[str | None] = mapped_column(String(256), nullable=True)
-    error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    result_ref: Mapped[Optional[str]] = mapped_column(String(256), nullable=True)
+    error_code: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     trace_id: Mapped[str] = mapped_column(String(64), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(), onupdate=lambda: datetime.now())
@@ -201,12 +214,18 @@ class ServiceCallLog(Base):
     response_summary_json: Mapped[str] = mapped_column(Text)
     status_code: Mapped[int] = mapped_column(Integer)
     duration_ms: Mapped[int] = mapped_column(Integer)
-    error_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    error_code: Mapped[Optional[str]] = mapped_column(String(128), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now())
 
 
-def init_db(database_url: str) -> Session:
-    engine = create_engine(database_url)
+def init_session_factory(database_url: str) -> sessionmaker:
+    connect_args: dict[str, Any] = {}
+    if database_url.startswith("sqlite"):
+        connect_args = {"check_same_thread": False}
+    engine: Engine = create_engine(database_url, connect_args=connect_args, future=True)
     Base.metadata.create_all(engine)
-    factory = sessionmaker(bind=engine, autocommit=False, autoflush=False)
-    return factory()
+    return sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+
+def init_db(database_url: str):
+    return init_session_factory(database_url)()

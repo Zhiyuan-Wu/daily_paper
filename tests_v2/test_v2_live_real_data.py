@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import os
 import shutil
+import time
 from pathlib import Path
 
 import pytest
@@ -152,8 +153,18 @@ def test_live_research_task_with_claude_cli(tmp_path: Path):
     assert create_resp.status_code == 200
 
     result = create_resp.json()["result"]
-    assert result["status"] == "completed", result
     task_id = result["task_id"]
+    assert task_id
+
+    for _ in range(120):
+        status_resp = client.get(f"/api/v1/research/tasks/{task_id}")
+        assert status_resp.status_code == 200
+        status = status_resp.json()["status"]
+        if status == "completed":
+            break
+        if status == "failed":
+            assert False, status_resp.json()
+        time.sleep(1)
 
     result_resp = client.get(f"/api/v1/research/tasks/{task_id}/result")
     assert result_resp.status_code == 200

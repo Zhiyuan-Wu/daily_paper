@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 import logging
-import uuid
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
 import requests
 
@@ -26,8 +26,9 @@ class FetchService:
         self.config = config
         self.artifacts = ArtifactManager(config.artifact_root)
         self.conflict_logger = ConflictLogger(config.artifact_root / "logs" / "dedup_conflicts.jsonl")
+        profile = self.repo.ensure_profile()
         self.plugins: dict[str, SourcePlugin] = {
-            "openalex": OpenAlexPlugin(rate_limit_rps=config.scholar_rate_limit_rps),
+            "openalex": OpenAlexPlugin(rate_limit_rps=profile.scholar_rate_limit_rps),
             "arxiv": ArxivPlugin(),
             "huggingface": HuggingFacePlugin(),
         }
@@ -36,12 +37,16 @@ class FetchService:
         self,
         sources: list[str],
         keywords: list[str],
-        start_date: str | None,
-        end_date: str | None,
+        start_date: Optional[str],
+        end_date: Optional[str],
         page: int,
         page_size: int,
-        arxiv_categories: list[str] | None = None,
+        arxiv_categories: Optional[list[str]] = None,
     ) -> list[SourcePaper]:
+        safe_page = max(1, int(page))
+        safe_page_size = max(1, int(page_size))
+        fetch_limit = safe_page * safe_page_size
+
         all_items: list[SourcePaper] = []
         source_errors: dict[str, str] = {}
         for source in sources:
@@ -50,7 +55,14 @@ class FetchService:
                 source_errors[source] = "SOURCE_PLUGIN_NOT_FOUND"
                 continue
             try:
-                items = plugin.search(keywords, start_date, end_date, page, page_size, arxiv_categories=arxiv_categories)
+                items = plugin.search(
+                    keywords,
+                    start_date,
+                    end_date,
+                    page=1,
+                    page_size=fetch_limit,
+                    arxiv_categories=arxiv_categories,
+                )
                 all_items.extend(items)
             except Exception as e:
                 logger.exception("source search failed: source=%s", source)
@@ -58,14 +70,17 @@ class FetchService:
 
         if not all_items and source_errors:
             raise RuntimeError(f"FETCH_ALL_SOURCES_FAILED: {json.dumps(source_errors, ensure_ascii=False)}")
-        return all_items
+        all_items.sort(key=lambda x: x.published_at or datetime.min, reverse=True)
+        start = (safe_page - 1) * safe_page_size
+        end = start + safe_page_size
+        return all_items[start:end]
 
     def validate_sources(
         self,
         sources: list[str],
-        start_date: str | None,
-        end_date: str | None,
-        arxiv_categories: list[str] | None = None,
+        start_date: Optional[str],
+        end_date: Optional[str],
+        arxiv_categories: Optional[list[str]] = None,
     ) -> dict[str, dict]:
         result: dict[str, dict] = {}
         for source in sources:
@@ -106,7 +121,7 @@ class FetchService:
     def save_search_items(self, items: list[SourcePaper]) -> list[dict]:
         saved: list[dict] = []
         for item in items:
-            paper_uid = self.artifacts.paper_uid(item.source, item.external_id)
+            paper_uid = self.repo.resolve_paper_uid(item.source, item.external_id) or self.artifacts.paper_uid(item.source, item.external_id)
             existing = find_existing_paper(self.repo.session, item)
             if existing is not None and existing.paper_uid != paper_uid:
                 self.conflict_logger.log(
@@ -115,6 +130,8 @@ class FetchService:
                 )
                 paper_uid = existing.paper_uid
 
+            canonical = self.repo.get_paper(paper_uid)
+            preserve_identity = bool(canonical and (canonical.source != item.source or canonical.external_id != item.external_id))
             paper = self.repo.upsert_paper(
                 {
                     "paper_uid": paper_uid,
@@ -128,7 +145,8 @@ class FetchService:
                     "source_url": item.url,
                     "pdf_url": item.pdf_url,
                     "pdf_unavailable": item.pdf_unavailable,
-                }
+                },
+                preserve_identity=preserve_identity,
             )
             self.repo.add_source_link(
                 paper_uid=paper.paper_uid,
@@ -155,7 +173,7 @@ class FetchService:
         return saved
 
     def download(self, req: DownloadRequest) -> dict:
-        paper_uid = self.artifacts.paper_uid(req.source, req.external_id)
+        paper_uid = self.repo.resolve_paper_uid(req.source, req.external_id) or self.artifacts.paper_uid(req.source, req.external_id)
         paper = self.repo.get_paper(paper_uid)
         if paper and paper.pdf_unavailable:
             return {"paper_uid": paper_uid, "pdf_path": None, "deduplicated": True, "pdf_unavailable": True}
@@ -191,7 +209,6 @@ class FetchService:
 
         info = self.artifacts.write_bytes(self.artifacts.pdf_path(paper_uid), content)
         self.repo.upsert_artifact(
-            artifact_id=uuid.uuid4().hex,
             payload={
                 "paper_uid": paper_uid,
                 "artifact_type": "pdf",
@@ -200,7 +217,7 @@ class FetchService:
                 "size_bytes": info.size_bytes,
                 "parser_method": None,
                 "parser_version": None,
-            },
+            }
         )
         if paper:
             paper.pdf_url = pdf_url

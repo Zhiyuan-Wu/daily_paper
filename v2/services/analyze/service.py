@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from typing import Optional
 
 from v2.contracts.analyze import AnalyzeResult
 from v2.db.repo import Repo
@@ -11,7 +12,7 @@ class AnalyzeService:
     def __init__(self, repo: Repo):
         self.repo = repo
 
-    def analyze(self, paper_uid: str, title: str, full_text: str, abstract: str | None) -> dict:
+    def analyze(self, paper_uid: str, title: str, full_text: str, abstract: Optional[str]) -> dict:
         chunks = [line.strip() for line in full_text.splitlines() if line.strip()]
         first = chunks[:8]
         key_points = first[:5]
@@ -31,7 +32,7 @@ class AnalyzeService:
         return {"paper_uid": paper_uid, "result": json.loads(result.model_dump_json()), "analysis_id": analysis_id}
 
     @staticmethod
-    def _infer_tags(title: str, abstract: str | None, text: str) -> list[str]:
+    def _infer_tags(title: str, abstract: Optional[str], text: str) -> list[str]:
         corpus = f"{title}\n{abstract or ''}\n{text}".lower()
         tags = []
         for tag in ["llm", "transformer", "rag", "agent", "multimodal", "reinforcement learning", "diffusion"]:

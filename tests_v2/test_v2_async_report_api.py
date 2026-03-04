@@ -23,7 +23,10 @@ def test_daily_report_generate_async_should_create_job_and_complete(tmp_path: Pa
     mod, client = _load_app(tmp_path)
 
     def fake_runner(job_id: str, payload: dict, trace_id: str):
-        mod.repo.update_job(job_id, status="completed", progress=100, result_ref="mock_report_id")
+        session = mod.SessionLocal()
+        repo = mod.Repo(session)
+        repo.update_job(job_id, status="completed", progress=100, result_ref="mock_report_id")
+        session.close()
 
     monkeypatch.setattr(mod, "_run_daily_report_job_async", fake_runner)
 

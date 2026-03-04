@@ -44,6 +44,7 @@
 - 日报默认源为 `arxiv + huggingface`，默认时间窗口 `7` 天，默认 arXiv AI 分区：
   - `cs.AI, cs.LG, cs.CL, cs.CV, cs.RO, stat.ML`
 - 日报前端走异步任务：创建任务后轮询 `job` 状态，不依赖前端超时等待
+- 调研任务同样走异步执行：创建后通过任务状态接口轮询，不阻塞 API 请求线程
 - 源可用性检查以“真实数据”为标准（不是仅 API 不报错）：
   - 通过 `GET /api/v1/sources/availability` 统一检查
   - 若源网络不可达/无真实论文数据，标记为不可用
@@ -60,6 +61,7 @@
 - `sources.json` 最小协议：`title,url,source,published_at,evidence_snippet`
 - `evidence_snippet` 最大 300 字符
 - 设置保存后即时生效（只作用于新任务）
+- API 编排会记录服务调用摘要到 `service_call_logs`，可按 `trace_id` 回溯
 - 不做设置变更审计
 
 ## 5. 注意事项
@@ -69,7 +71,7 @@
 
 ## 6. 前端交付
 - 前端工程目录：`frontend/`
-- 页面：论文日报、论文探索、深度调研、设置
+- 页面：论文日报、论文探索、深度调研、推荐结果、任务中心、设置
 - 布局：左侧导航 + 右侧子页面
 - 组件库：Ant Design
 

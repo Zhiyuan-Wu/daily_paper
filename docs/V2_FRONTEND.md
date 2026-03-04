@@ -24,6 +24,8 @@ API 基地址环境变量：
 - `/reports` 论文日报
 - `/papers` 论文探索
 - `/research` 深度调研
+- `/recommendations` 推荐结果
+- `/tasks` 任务中心
 - `/settings` 设置
 
 ## 交互说明

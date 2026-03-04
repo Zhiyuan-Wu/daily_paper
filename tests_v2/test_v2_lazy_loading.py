@@ -8,6 +8,7 @@ import fitz
 from fastapi.testclient import TestClient
 
 from v2.contracts.fetch import DownloadRequest
+from v2.foundation.artifact_manager import ArtifactManager
 from v2.services.fetch.plugins import SourcePaper
 
 
@@ -47,8 +48,7 @@ def test_daily_report_should_not_fail_when_lazy_enrichment_fails(tmp_path: Path,
         pdf_unavailable=True,
     )
 
-    monkeypatch.setattr(mod.fetch_service, "search", lambda *args, **kwargs: [paper])
-    mod.report_service.fetch_service = mod.fetch_service
+    monkeypatch.setattr(mod.FetchService, "search", lambda self, *args, **kwargs: [paper])
 
     resp = client.post(
         "/api/v1/reports/daily/generate",
@@ -83,16 +83,15 @@ def test_pdf_parse_analyze_should_lazy_load_when_artifacts_missing(tmp_path: Pat
         doi="10.0000/lazy-chain",
         pdf_unavailable=False,
     )
-    monkeypatch.setattr(mod.fetch_service, "search", lambda *args, **kwargs: [paper])
+    monkeypatch.setattr(mod.FetchService, "search", lambda self, *args, **kwargs: [paper])
 
     call_count = {"download": 0}
 
-    def fake_download(req: DownloadRequest):
+    def fake_download(self, req: DownloadRequest):
         call_count["download"] += 1
-        paper_uid = mod.fetch_service.artifacts.paper_uid(req.source, req.external_id)
-        info = mod.fetch_service.artifacts.write_bytes(mod.fetch_service.artifacts.pdf_path(paper_uid), pdf_bytes)
-        mod.repo.upsert_artifact(
-            artifact_id=f"pdf-lazy-{call_count['download']}",
+        paper_uid = self.artifacts.paper_uid(req.source, req.external_id)
+        info = self.artifacts.write_bytes(self.artifacts.pdf_path(paper_uid), pdf_bytes)
+        self.repo.upsert_artifact(
             payload={
                 "paper_uid": paper_uid,
                 "artifact_type": "pdf",
@@ -101,11 +100,11 @@ def test_pdf_parse_analyze_should_lazy_load_when_artifacts_missing(tmp_path: Pat
                 "size_bytes": info.size_bytes,
                 "parser_method": None,
                 "parser_version": None,
-            },
+            }
         )
         return {"paper_uid": paper_uid, "pdf_path": str(info.path), "deduplicated": False, "pdf_unavailable": False}
 
-    monkeypatch.setattr(mod.fetch_service, "download", fake_download)
+    monkeypatch.setattr(mod.FetchService, "download", fake_download)
 
     search_resp = client.post(
         "/api/v1/papers/search",
@@ -138,8 +137,10 @@ def test_pdf_parse_analyze_should_lazy_load_when_artifacts_missing(tmp_path: Pat
 
 def test_paper_detail_should_skip_lazy_analyze_when_pdf_marked_unavailable(tmp_path: Path, monkeypatch):
     mod, client = _load_app(tmp_path)
-    paper_uid = mod.fetch_service.artifacts.paper_uid("openalex", "WTEST-PDF-UNAVAILABLE-1")
-    mod.repo.upsert_paper(
+    paper_uid = ArtifactManager.paper_uid("openalex", "WTEST-PDF-UNAVAILABLE-1")
+    session = mod.SessionLocal()
+    repo = mod.Repo(session)
+    repo.upsert_paper(
         {
             "paper_uid": paper_uid,
             "source": "openalex",
@@ -154,6 +155,7 @@ def test_paper_detail_should_skip_lazy_analyze_when_pdf_marked_unavailable(tmp_p
             "pdf_unavailable": True,
         }
     )
+    session.close()
 
     def fail_if_called(_paper_uid: str):
         raise AssertionError("_ensure_analysis_for_paper_uid should not be called for pdf_unavailable paper")
@@ -175,8 +177,10 @@ def test_paper_detail_should_skip_lazy_analyze_when_pdf_marked_unavailable(tmp_p
 
 def test_parse_endpoint_should_ensure_pdf_before_parse_service(tmp_path: Path, monkeypatch):
     mod, client = _load_app(tmp_path)
-    paper_uid = mod.fetch_service.artifacts.paper_uid("openalex", "WTEST-PARSE-ENSURE-PDF-1")
-    mod.repo.upsert_paper(
+    paper_uid = ArtifactManager.paper_uid("openalex", "WTEST-PARSE-ENSURE-PDF-1")
+    session = mod.SessionLocal()
+    repo = mod.Repo(session)
+    repo.upsert_paper(
         {
             "paper_uid": paper_uid,
             "source": "openalex",
@@ -191,15 +195,15 @@ def test_parse_endpoint_should_ensure_pdf_before_parse_service(tmp_path: Path, m
             "pdf_unavailable": False,
         }
     )
+    session.close()
 
     pdf_bytes = _make_pdf_bytes("parse ensure pdf")
     calls = {"download": 0, "parse": 0}
 
-    def fake_download(req: DownloadRequest):
+    def fake_download(self, req: DownloadRequest):
         calls["download"] += 1
-        info = mod.fetch_service.artifacts.write_bytes(mod.fetch_service.artifacts.pdf_path(paper_uid), pdf_bytes)
-        mod.repo.upsert_artifact(
-            artifact_id=f"pdf-ensure-parse-{calls['download']}",
+        info = self.artifacts.write_bytes(self.artifacts.pdf_path(paper_uid), pdf_bytes)
+        self.repo.upsert_artifact(
             payload={
                 "paper_uid": paper_uid,
                 "artifact_type": "pdf",
@@ -208,16 +212,19 @@ def test_parse_endpoint_should_ensure_pdf_before_parse_service(tmp_path: Path, m
                 "size_bytes": info.size_bytes,
                 "parser_method": None,
                 "parser_version": None,
-            },
+            }
         )
         return {"paper_uid": paper_uid, "pdf_path": str(info.path), "deduplicated": False, "pdf_unavailable": False}
 
     text_path = tmp_path / "parse_ensure_text.txt"
     text_path.write_text("parsed text content", encoding="utf-8")
 
-    def fake_parse(paper_uid: str, method: str, force_reparse: bool):
+    def fake_parse(self, paper_uid: str, method: str, force_reparse: bool):
         calls["parse"] += 1
-        pdf_artifact = mod.repo.get_artifact(paper_uid, "pdf")
+        session = mod.SessionLocal()
+        repo = mod.Repo(session)
+        pdf_artifact = repo.get_artifact(paper_uid, "pdf")
+        session.close()
         assert pdf_artifact is not None
         assert Path(pdf_artifact.path).exists()
         return {
@@ -228,8 +235,8 @@ def test_parse_endpoint_should_ensure_pdf_before_parse_service(tmp_path: Path, m
             "char_count": 18,
         }
 
-    monkeypatch.setattr(mod.fetch_service, "download", fake_download)
-    monkeypatch.setattr(mod.parse_service, "parse", fake_parse)
+    monkeypatch.setattr(mod.FetchService, "download", fake_download)
+    monkeypatch.setattr(mod.ParseService, "parse", fake_parse)
 
     resp = client.post(
         f"/api/v1/papers/{paper_uid}/parse",

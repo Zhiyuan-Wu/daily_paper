@@ -14,7 +14,10 @@ def run_cleanup_retry_queue(queue_file: Path) -> int:
     for line in lines:
         if not line.strip():
             continue
-        data = json.loads(line)
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            continue
         workdir = Path(data["workdir"])
         try:
             if workdir.exists():

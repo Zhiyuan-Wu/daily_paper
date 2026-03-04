@@ -12,7 +12,7 @@ Daily Paper V2 is an automated paper management and assisted-learning system wit
 
 ### Running the Application
 ```bash
-# Start backend + frontend (defaults: backend on 0.0.0.0:8011, frontend on 0.0.0.0:5183)
+# Start backend + frontend (defaults: backend on 0.0.0.0:8001, frontend on 0.0.0.0:5173)
 ./start_server.sh
 
 # Backend only (API defaults to 127.0.0.1:8001)
@@ -154,11 +154,12 @@ All datetimes are timezone-aware (default: `Asia/Shanghai`).
 
 ### Recommend Service (`v2/services/recommend/`)
 
-**Strategies** (four default, equal weight 0.25):
+**Strategies** (five default, equal weight 0.2):
 - `keyword_semantic` - Semantic similarity to interest keywords
 - `interested_semantic` - Similarity to previously liked papers
 - `repetition_penalty` - Downweight previously recommended
 - `llm_theme` - LLM-generated interest themes
+- `recommended_inverse` - Penalize papers recommended too frequently
 
 **Fusion**: Score = Σ(w_i * s_i) / Σ(w_i), weights configurable in settings
 
@@ -183,7 +184,7 @@ All datetimes are timezone-aware (default: `Asia/Shanghai`).
 
 **Manual trigger only** (no scheduling):
 - Pipeline: fetch → parse → analyze → recommend → summarize
-- Any step failure = entire report failure (no degraded output)
+- Single-paper lazy enrichment failure does not fail the full report; report fails only when core fetch/recommend stages have no usable output
 - Date calculated in user's timezone
 - Result: Markdown summary + ranked paper list with analysis snapshots
 

@@ -22,13 +22,12 @@ class ResearchService:
         self.repo = repo
         self.config = config
 
-    def run_task(self, topic: str, constraints: dict[str, str]) -> dict:
+    def create_task(self, topic: str, constraints: dict[str, str]) -> dict:
         task_id = uuid.uuid4().hex
         workdir = self.config.research_root / task_id
         workdir.mkdir(parents=True, exist_ok=True)
         task_file = workdir / f"task_{task_id}.txt"
         report_file = workdir / "report.md"
-        sources_file = workdir / "sources.json"
 
         task_file.write_text(self._build_task_prompt(topic, constraints), encoding="utf-8")
 
@@ -36,20 +35,40 @@ class ResearchService:
             id=task_id,
             topic=topic,
             constraints_json=json.dumps(constraints, ensure_ascii=False),
-            status="running",
+            status="pending",
             workdir_path=str(workdir),
             task_file_path=str(task_file),
             report_file_path=str(report_file),
-            started_at=datetime.now(),
         )
         self.repo.session.add(task)
+        self.repo.session.commit()
+        return {"task_id": task_id, "status": "pending"}
+
+    def run_task(self, topic: str, constraints: dict[str, str]) -> dict:
+        created = self.create_task(topic, constraints)
+        return self.execute_task(created["task_id"])
+
+    def execute_task(self, task_id: str) -> dict:
+        task = self.repo.session.query(ResearchTask).filter(ResearchTask.id == task_id).first()
+        if not task:
+            raise FileNotFoundError("TASK_NOT_FOUND")
+        if task.status == "completed":
+            return {"task_id": task_id, "status": "completed"}
+
+        workdir = Path(task.workdir_path)
+        task_file = Path(task.task_file_path)
+        report_file = Path(task.report_file_path) if task.report_file_path else workdir / "report.md"
+        sources_file = workdir / "sources.json"
+        task.status = "running"
+        task.started_at = task.started_at or datetime.now()
+        task.error_message = None
         self.repo.session.commit()
 
         try:
             self._run_claude(workdir, task_file)
 
             if not report_file.exists():
-                report_file.write_text(f"# 调研报告\n\n主题：{topic}\n\n（claude 未生成报告，使用兜底内容）", encoding="utf-8")
+                report_file.write_text(f"# 调研报告\n\n主题：{task.topic}\n\n（claude 未生成报告，使用兜底内容）", encoding="utf-8")
             if not sources_file.exists():
                 sources_file.write_text("[]", encoding="utf-8")
 
@@ -57,14 +76,18 @@ class ResearchService:
             sources = self._read_sources_file(sources_file)
             sources = self._normalize_sources(sources)
 
-            self.repo.session.add(
-                ResearchReport(
+            report = self.repo.session.query(ResearchReport).filter(ResearchReport.task_id == task_id).first()
+            if report is None:
+                report = ResearchReport(
                     id=uuid.uuid4().hex,
                     task_id=task_id,
                     report_md=report_md,
                     sources_json=json.dumps(sources, ensure_ascii=False),
                 )
-            )
+                self.repo.session.add(report)
+            else:
+                report.report_md = report_md
+                report.sources_json = json.dumps(sources, ensure_ascii=False)
             task.status = "completed"
             task.finished_at = datetime.now()
             self.repo.session.commit()
@@ -72,7 +95,7 @@ class ResearchService:
             self._cleanup_workdir(task_id, workdir)
             return {"task_id": task_id, "status": "completed"}
         except Exception as e:
-            logger.exception("Research task failed task_id=%s topic=%s", task_id, topic)
+            logger.exception("Research task failed task_id=%s topic=%s", task_id, task.topic)
             task.status = "failed"
             task.error_message = str(e)
             task.finished_at = datetime.now()
@@ -126,7 +149,7 @@ class ResearchService:
             "--allowedTools",
             "Bash,Read,Edit,Write,WebFetch",
         ]
-        timeout = self.config.research_timeout_minutes * 60
+        timeout = self.repo.ensure_profile().research_timeout_minutes * 60
         subprocess.run(cmd, cwd=str(workdir), check=True, timeout=timeout)
 
     def _normalize_sources(self, sources: list[object]) -> list[dict]:

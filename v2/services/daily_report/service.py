@@ -4,6 +4,7 @@ import json
 import logging
 import uuid
 from datetime import datetime, timedelta
+from typing import Optional
 
 from v2.config import V2Config
 from v2.contracts.fetch import DownloadRequest
@@ -33,7 +34,7 @@ class DailyReportService:
         keywords: list[str],
         top_k: int,
         window_days: int = 1,
-        arxiv_categories: list[str] | None = None,
+        arxiv_categories: Optional[list[str]] = None,
     ) -> dict:
         lookback_days = max(1, int(window_days))
         start_date = report_date.date() - timedelta(days=lookback_days - 1)
@@ -76,13 +77,14 @@ class DailyReportService:
             status = enrich_status.get(item["paper_uid"], "metadata_only")
             summary_lines.append(f"- {paper.title if paper else item['paper_uid']} (score={item['score']}, enrich={status})")
         summary_md = "\n".join(summary_lines)
+        profile = self.repo.ensure_profile()
 
         report_id = uuid.uuid4().hex
         self.repo.session.add(
             DailyReport(
                 id=report_id,
                 report_date=report_date,
-                timezone=self.config.timezone,
+                timezone=profile.timezone,
                 summary_md=summary_md,
                 meta_json=json.dumps(
                     {
@@ -130,7 +132,8 @@ class DailyReportService:
                 return "pdf_unavailable"
 
             parse_out = self.parse_service.parse(download_out["paper_uid"], "simple", False)
-            text = open(parse_out["text_path"], "r", encoding="utf-8").read()
+            with open(parse_out["text_path"], "r", encoding="utf-8") as f:
+                text = f.read()
             paper = self.repo.get_paper(paper_uid)
             if not paper:
                 return "paper_missing"

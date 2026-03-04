@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import threading
+import time
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Protocol
+from typing import Optional, Protocol
 from urllib.parse import urlparse
 from xml.etree import ElementTree as ET
 
@@ -19,11 +21,11 @@ class SourcePaper:
     external_id: str
     title: str
     authors: list[str]
-    abstract: str | None
-    published_at: datetime | None
-    url: str | None
-    pdf_url: str | None
-    doi: str | None = None
+    abstract: Optional[str]
+    published_at: Optional[datetime]
+    url: Optional[str]
+    pdf_url: Optional[str]
+    doi: Optional[str] = None
     pdf_unavailable: bool = False
 
 
@@ -33,16 +35,16 @@ class SourcePlugin(Protocol):
     def search(
         self,
         keywords: list[str],
-        start_date: str | None,
-        end_date: str | None,
+        start_date: Optional[str],
+        end_date: Optional[str],
         page: int,
         page_size: int,
-        arxiv_categories: list[str] | None = None,
+        arxiv_categories: Optional[list[str]] = None,
     ) -> list[SourcePaper]:
         ...
 
 
-def _parse_iso_datetime(raw: str | None) -> datetime | None:
+def _parse_iso_datetime(raw: Optional[str]) -> Optional[datetime]:
     if not raw:
         return None
     try:
@@ -57,7 +59,7 @@ def _parse_iso_datetime(raw: str | None) -> datetime | None:
     return None
 
 
-def _in_date_range(value: datetime | None, start_date: str | None, end_date: str | None) -> bool:
+def _in_date_range(value: Optional[datetime], start_date: Optional[str], end_date: Optional[str]) -> bool:
     if value is None:
         return True
     d = value.date()
@@ -76,7 +78,7 @@ def _in_date_range(value: datetime | None, start_date: str | None, end_date: str
     return True
 
 
-def _pick_str(payload: dict, keys: list[str]) -> str | None:
+def _pick_str(payload: dict, keys: list[str]) -> Optional[str]:
     for key in keys:
         value = payload.get(key)
         if isinstance(value, str) and value.strip():
@@ -89,15 +91,27 @@ class OpenAlexPlugin:
 
     def __init__(self, rate_limit_rps: float = 2.0):
         self.rate_limit_rps = rate_limit_rps
+        self._rate_lock = threading.Lock()
+        self._last_request_at = 0.0
+
+    def _throttle(self) -> None:
+        min_interval = 1.0 / max(0.1, float(self.rate_limit_rps))
+        with self._rate_lock:
+            now = time.monotonic()
+            wait = min_interval - (now - self._last_request_at)
+            if wait > 0:
+                time.sleep(wait)
+                now = time.monotonic()
+            self._last_request_at = now
 
     def search(
         self,
         keywords: list[str],
-        start_date: str | None,
-        end_date: str | None,
+        start_date: Optional[str],
+        end_date: Optional[str],
         page: int,
         page_size: int,
-        arxiv_categories: list[str] | None = None,
+        arxiv_categories: Optional[list[str]] = None,
     ) -> list[SourcePaper]:
         filters = ["type:article"]
         if start_date:
@@ -115,6 +129,7 @@ class OpenAlexPlugin:
 
         url = "https://api.openalex.org/works"
         try:
+            self._throttle()
             response = requests.get(url, params=params, timeout=15)
             response.raise_for_status()
             payload = response.json()
@@ -158,7 +173,7 @@ class OpenAlexPlugin:
         return items
 
     @staticmethod
-    def _pick_pdf_url(row: dict) -> str | None:
+    def _pick_pdf_url(row: dict) -> Optional[str]:
         candidates: list[dict] = []
         best_oa = row.get("best_oa_location")
         if isinstance(best_oa, dict):
@@ -189,11 +204,11 @@ class ArxivPlugin:
     def search(
         self,
         keywords: list[str],
-        start_date: str | None,
-        end_date: str | None,
+        start_date: Optional[str],
+        end_date: Optional[str],
         page: int,
         page_size: int,
-        arxiv_categories: list[str] | None = None,
+        arxiv_categories: Optional[list[str]] = None,
     ) -> list[SourcePaper]:
         categories = [x.strip() for x in (arxiv_categories or self.default_ai_categories) if x and x.strip()]
         cat_query = " OR ".join(f"cat:{cat}" for cat in categories)
@@ -236,7 +251,7 @@ class ArxivPlugin:
             authors = [a for a in authors if a]
             doi = (entry.findtext("arxiv:doi", default="", namespaces=ns) or "").strip() or None
 
-            pdf_url: str | None = None
+            pdf_url: Optional[str] = None
             for link in entry.findall("atom:link", ns):
                 if (link.attrib.get("title") or "").lower() == "pdf":
                     pdf_url = link.attrib.get("href")
@@ -270,11 +285,11 @@ class HuggingFacePlugin:
     def search(
         self,
         keywords: list[str],
-        start_date: str | None,
-        end_date: str | None,
+        start_date: Optional[str],
+        end_date: Optional[str],
         page: int,
         page_size: int,
-        arxiv_categories: list[str] | None = None,
+        arxiv_categories: Optional[list[str]] = None,
     ) -> list[SourcePaper]:
         rows = self._fetch_rows(limit=max(page_size * 3, 30))
         items: list[SourcePaper] = []
@@ -304,7 +319,7 @@ class HuggingFacePlugin:
             ("https://huggingface.co/api/daily_papers", {"limit": limit}),
             ("https://huggingface.co/api/papers", {"limit": limit}),
         ]
-        last_error: Exception | None = None
+        last_error: Optional[Exception] = None
         for url, params in endpoints:
             try:
                 response = requests.get(url, params=params, timeout=20)
@@ -324,7 +339,7 @@ class HuggingFacePlugin:
             raise RuntimeError(f"HUGGINGFACE_SEARCH_FAILED: {last_error}") from last_error
         return []
 
-    def _normalize_row(self, row: dict) -> SourcePaper | None:
+    def _normalize_row(self, row: dict) -> Optional[SourcePaper]:
         title = _pick_str(row, ["title", "paper_title", "name"])
         if not title and isinstance(row.get("paper"), dict):
             title = _pick_str(row["paper"], ["title", "name"])

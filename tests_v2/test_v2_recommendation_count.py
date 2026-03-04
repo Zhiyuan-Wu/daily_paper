@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from v2.foundation.artifact_manager import ArtifactManager
 
 
 def _load_app(tmp_path: Path):
@@ -21,10 +22,12 @@ def _load_app(tmp_path: Path):
 def test_recommend_should_downrank_frequently_recommended_papers(tmp_path: Path):
     mod, client = _load_app(tmp_path)
 
-    uid_new = mod.fetch_service.artifacts.paper_uid("arxiv", "A-NEW-1")
-    uid_old = mod.fetch_service.artifacts.paper_uid("arxiv", "A-OLD-1")
+    uid_new = ArtifactManager.paper_uid("arxiv", "A-NEW-1")
+    uid_old = ArtifactManager.paper_uid("arxiv", "A-OLD-1")
 
-    mod.repo.upsert_paper(
+    session = mod.SessionLocal()
+    repo = mod.Repo(session)
+    repo.upsert_paper(
         {
             "paper_uid": uid_new,
             "source": "arxiv",
@@ -40,7 +43,7 @@ def test_recommend_should_downrank_frequently_recommended_papers(tmp_path: Path)
             "recommended_count": 0,
         }
     )
-    mod.repo.upsert_paper(
+    repo.upsert_paper(
         {
             "paper_uid": uid_old,
             "source": "arxiv",
@@ -56,6 +59,7 @@ def test_recommend_should_downrank_frequently_recommended_papers(tmp_path: Path)
             "recommended_count": 10,
         }
     )
+    session.close()
 
     settings_resp = client.put(
         "/api/v1/settings",
@@ -81,7 +85,10 @@ def test_recommend_should_downrank_frequently_recommended_papers(tmp_path: Path)
     assert items[1]["paper_uid"] == uid_old
 
     # recommended_count should be incremented whenever a paper is recommended.
-    new_paper = mod.repo.get_paper(uid_new)
-    old_paper = mod.repo.get_paper(uid_old)
+    session = mod.SessionLocal()
+    repo = mod.Repo(session)
+    new_paper = repo.get_paper(uid_new)
+    old_paper = repo.get_paper(uid_old)
+    session.close()
     assert new_paper is not None and new_paper.recommended_count == 1
     assert old_paper is not None and old_paper.recommended_count == 11

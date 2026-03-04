@@ -12,17 +12,22 @@ class SettingsRuntime:
 
     def get(self) -> dict:
         p = self.repo.ensure_profile()
+        def _loads(payload: str, default):
+            try:
+                return json.loads(payload)
+            except Exception:
+                return default
         return {
             "timezone": p.timezone,
-            "interest_keywords": json.loads(p.interest_keywords_json),
-            "excluded_keywords": json.loads(p.excluded_keywords_json),
-            "default_sources": json.loads(p.default_sources_json),
-            "daily_report_sources": json.loads(p.daily_report_sources_json),
-            "daily_report_keywords": json.loads(p.daily_report_keywords_json),
-            "daily_report_arxiv_categories": json.loads(p.daily_report_arxiv_categories_json),
+            "interest_keywords": _loads(p.interest_keywords_json, []),
+            "excluded_keywords": _loads(p.excluded_keywords_json, []),
+            "default_sources": _loads(p.default_sources_json, []),
+            "daily_report_sources": _loads(p.daily_report_sources_json, []),
+            "daily_report_keywords": _loads(p.daily_report_keywords_json, []),
+            "daily_report_arxiv_categories": _loads(p.daily_report_arxiv_categories_json, []),
             "daily_report_top_k": p.daily_report_top_k,
             "daily_report_window_days": p.daily_report_window_days,
-            "recommend_strategy_weights": json.loads(p.recommend_strategy_weights_json),
+            "recommend_strategy_weights": _loads(p.recommend_strategy_weights_json, {}),
             "scholar_provider": p.scholar_provider,
             "scholar_rate_limit_rps": p.scholar_rate_limit_rps,
             "batch_download_concurrency": p.batch_download_concurrency,
@@ -58,6 +63,8 @@ class SettingsRuntime:
             p.recommend_strategy_weights_json = json.dumps(payload["recommend_strategy_weights"], ensure_ascii=False)
         if "scholar_rate_limit_rps" in payload:
             p.scholar_rate_limit_rps = float(payload["scholar_rate_limit_rps"])
+        if "scholar_provider" in payload:
+            p.scholar_provider = str(payload["scholar_provider"])
         if "batch_download_concurrency" in payload:
             p.batch_download_concurrency = int(payload["batch_download_concurrency"])
         if "batch_parse_concurrency" in payload:

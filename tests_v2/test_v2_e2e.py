@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import json
 import os
+import time
 from pathlib import Path
 
 import fitz
@@ -53,11 +54,10 @@ def test_v2_end_to_end(tmp_path: Path, monkeypatch):
 
     pdf_bytes = _make_pdf_bytes("This is a test PDF for parsing and downstream analysis.")
 
-    def fake_download(req: DownloadRequest):
-        paper_uid = mod.fetch_service.artifacts.paper_uid(req.source, req.external_id)
-        info = mod.fetch_service.artifacts.write_bytes(mod.fetch_service.artifacts.pdf_path(paper_uid), pdf_bytes)
-        mod.repo.upsert_artifact(
-            artifact_id="pdf-artifact-e2e",
+    def fake_download(self, req: DownloadRequest):
+        paper_uid = self.artifacts.paper_uid(req.source, req.external_id)
+        info = self.artifacts.write_bytes(self.artifacts.pdf_path(paper_uid), pdf_bytes)
+        self.repo.upsert_artifact(
             payload={
                 "paper_uid": paper_uid,
                 "artifact_type": "pdf",
@@ -66,13 +66,12 @@ def test_v2_end_to_end(tmp_path: Path, monkeypatch):
                 "size_bytes": info.size_bytes,
                 "parser_method": None,
                 "parser_version": None,
-            },
+            }
         )
         return {"paper_uid": paper_uid, "pdf_path": str(info.path), "deduplicated": False, "pdf_unavailable": False}
 
-    monkeypatch.setattr(mod.fetch_service, "search", fake_search)
-    monkeypatch.setattr(mod.fetch_service, "download", fake_download)
-    mod.report_service.fetch_service = mod.fetch_service
+    monkeypatch.setattr(mod.FetchService, "search", lambda self, *args, **kwargs: fake_search(*args, **kwargs))
+    monkeypatch.setattr(mod.FetchService, "download", fake_download)
 
     client = TestClient(mod.app)
 
@@ -142,6 +141,13 @@ def test_v2_end_to_end(tmp_path: Path, monkeypatch):
     resp = client.post("/api/v1/research/tasks", json={"topic": "Test topic", "constraints": {"lang": "zh"}})
     assert resp.status_code == 200
     task_id = resp.json()["result"]["task_id"]
+
+    for _ in range(40):
+        status_resp = client.get(f"/api/v1/research/tasks/{task_id}")
+        assert status_resp.status_code == 200
+        if status_resp.json()["status"] == "completed":
+            break
+        time.sleep(0.05)
 
     resp = client.get(f"/api/v1/research/tasks/{task_id}/result")
     assert resp.status_code == 200

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { BookOutlined, FileSearchOutlined, SearchOutlined, SettingOutlined } from "@ant-design/icons";
+import { BookOutlined, FileSearchOutlined, OrderedListOutlined, SearchOutlined, SettingOutlined, StarOutlined } from "@ant-design/icons";
 import { Layout, Menu, Typography } from "antd";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
@@ -28,13 +28,17 @@ export function AppLayout() {
             { key: "/reports", label: "日报" },
             { key: "/papers", label: "论文探索" },
             { key: "/research", label: "深度调研" },
-            { key: "/settings", label: "设置" }
+            { key: "/recommendations", label: "推荐结果" },
+            { key: "/tasks", label: "任务中心" },
+            { key: "/settings", label: "设置" },
           ].map((item) => {
             const iconMap: Record<string, ReactNode> = {
               "/reports": <BookOutlined />,
               "/papers": <FileSearchOutlined />,
               "/research": <SearchOutlined />,
-              "/settings": <SettingOutlined />
+              "/recommendations": <StarOutlined />,
+              "/tasks": <OrderedListOutlined />,
+              "/settings": <SettingOutlined />,
             };
             return { ...item, icon: iconMap[item.key] };
           })}

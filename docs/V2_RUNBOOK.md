@@ -15,10 +15,10 @@ API: `http://127.0.0.1:8001`
 常用环境变量：
 - `BACKEND_APP`（默认 `v2.api.app:app`）
 - `BACKEND_HOST`（默认 `0.0.0.0`）
-- `BACKEND_PORT`（默认 `8011`）
+- `BACKEND_PORT`（默认 `8001`）
 - `FRONTEND_ENABLE`（默认 `1`，设为 `0` 可禁用前端）
 - `FRONTEND_HOST`（默认 `0.0.0.0`）
-- `FRONTEND_PORT`（默认 `5183`）
+- `FRONTEND_PORT`（默认 `5173`）
 - `FRONTEND_INSTALL_DEPS`（默认 `1`，若无 `node_modules` 会先安装依赖）
 - `V2_LOG_LEVEL`（默认 `INFO`，可设为 `DEBUG` 查看更详细日志）
 
@@ -50,6 +50,9 @@ pytest -q tests_v2
 - 异步日报推荐使用：
   - 创建任务：`POST /api/v1/reports/daily/generate-async`
   - 查询任务：`GET /api/v1/tasks/{job_id}`
+- 调研任务同样为异步执行：
+  - 创建任务：`POST /api/v1/research/tasks`
+  - 查询任务：`GET /api/v1/research/tasks/{task_id}`
 - 论文源真实可用性检查（非“仅 API 可访问”）：
   - `GET /api/v1/sources/availability?window_days=7`
 
